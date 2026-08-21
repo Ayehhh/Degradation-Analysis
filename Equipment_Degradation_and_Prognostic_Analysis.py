@@ -182,7 +182,17 @@ if not model_results:
     st.error("❌ Unable to fit regression models with the selected degradation direction. Check threshold orientation.")
     st.stop()
 
-best_name = max(model_results, key=lambda k: model_results[k]["r2"])
+# --- FEATURE 1: MODEL SELECTION BY USER ---
+st.sidebar.header("4. Model Selection")
+auto_best = max(model_results, key=lambda k: model_results[k]["r2"])
+model_options = ["Auto (Select Best R²)"] + list(model_results.keys())
+selected_model_option = st.sidebar.selectbox("Regression Model Choice:", model_options)
+
+if selected_model_option == "Auto (Select Best R²)":
+    best_name = auto_best
+else:
+    best_name = selected_model_option
+
 best = model_results[best_name]
 
 # ==========================================
@@ -206,7 +216,7 @@ for name, res in model_results.items():
         "Model Name": name,
         "R² Score": f"{res['r2']:.4f}",
         "Residual Std": f"{res['resid_std']:.4f} {param_unit}".strip(),
-        "Status": "✅ Selected (Best Fit)" if name == best_name else "Candidate"
+        "Status": "✅ Selected" if name == best_name else ("Best Fit" if name == auto_best else "Candidate")
     })
 st.dataframe(pd.DataFrame(model_comparison_data), use_container_width=True)
 
@@ -287,14 +297,42 @@ band_val = t_val * best["resid_std"]
 trend_title = f"{complex_name} - {equipment_name}: {analysis_title}"
 y_label_text = f"Value [{param_unit}]" if param_unit else "Value"
 
-# --- 6A. STATIC GRAPH FOR PDF REPORT (MATPLOTLIB) ---
-fig_static, ax = plt.subplots(figsize=(10, 5), dpi=150)
-ax.scatter(df["timestamp"], df["value"], color="#1f77b4", s=25, alpha=0.8, label="Measured Data")
-ax.plot(dates_plot, y_plot, color="#d62728", linewidth=2, label=f"Best Fit ({best_name})")
+# --- FEATURE 2: STATIC GRAPH WITH BREACH CALLOUTS (MATPLOTLIB / PNG) ---
+fig_static, ax = plt.subplots(figsize=(11, 5.5), dpi=150)
+ax.scatter(df["timestamp"], df["value"], color="#1f77b4", s=30, alpha=0.8, label="Measured Data")
+ax.plot(dates_plot, y_plot, color="#d62728", linewidth=2, label=f"Model Fit ({best_name})")
 ax.fill_between(dates_plot, y_plot - band_val, y_plot + band_val, color="#d62728", alpha=0.15, label=f"{CONFIDENCE_PCT:.0f}% CI")
 
 ax.axhline(ALERT_THRESHOLD, color="#ff7f0e", linestyle="--", linewidth=1.5, label=f"Alert Limit ({ALERT_THRESHOLD:.4f} {param_unit})".strip())
 ax.axhline(DANGER_THRESHOLD, color="#d62728", linestyle="--", linewidth=1.5, label=f"Danger Limit ({DANGER_THRESHOLD:.4f} {param_unit})".strip())
+
+# Add Callout Annotations to Static Plot (Matplotlib)
+callout_points_mpl = [
+    ("Alert", f_Alert[1], ALERT_THRESHOLD, "#ff7f0e", (15, 20) if is_increasing else (15, -25)),
+    ("Danger", f_Danger[1], DANGER_THRESHOLD, "#d62728", (-100, 25) if is_increasing else (-100, -30))
+]
+
+for label, day_val, threshold_val, color_hex, text_offset in callout_points_mpl:
+    if day_val is not None and day_val >= 0:
+        breach_dt = t0 + timedelta(days=day_val)
+        date_str = breach_dt.strftime('%d %b %Y')
+        rul_val = int(day_val - latest_day)
+        
+        # Diamond marker at point of reach
+        ax.scatter([breach_dt], [threshold_val], color=color_hex, s=60, marker='D', zorder=5, edgecolor='white')
+        
+        # Text Callout Box
+        ax.annotate(
+            f"Expected {label}:\n{date_str} ({rul_val}d RUL)",
+            xy=(breach_dt, threshold_val),
+            xytext=text_offset,
+            textcoords='offset points',
+            fontsize=8,
+            fontweight='bold',
+            color=color_hex,
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=color_hex, lw=1.2, alpha=0.9),
+            arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0.2", color=color_hex, lw=1.2)
+        )
 
 ax.set_ylabel(y_label_text)
 ax.set_xlabel("Date")
@@ -329,7 +367,7 @@ fig_interactive.add_trace(go.Scatter(
 
 # Best Fit Curve
 fig_interactive.add_trace(go.Scatter(
-    x=dates_plot, y=y_plot, mode='lines', name=f'Best Fit ({best_name})', line=dict(color='#d62728', width=2)
+    x=dates_plot, y=y_plot, mode='lines', name=f'Model Fit ({best_name})', line=dict(color='#d62728', width=2)
 ))
 
 # Threshold Lines
@@ -343,12 +381,12 @@ fig_interactive.add_hline(
 )
 
 # Callout Markers & Annotations for Expected Breach Dates
-callout_points = [
+callout_points_plotly = [
     ("Alert", f_Alert[1], ALERT_THRESHOLD, "#ff7f0e", "bottom center" if is_increasing else "top center"),
     ("Danger", f_Danger[1], DANGER_THRESHOLD, "#d62728", "top center" if is_increasing else "bottom center")
 ]
 
-for label, day_val, threshold_val, color_hex, text_pos in callout_points:
+for label, day_val, threshold_val, color_hex, text_pos in callout_points_plotly:
     if day_val is not None and day_val >= 0:
         breach_dt = t0 + timedelta(days=day_val)
         date_str = breach_dt.strftime('%d %b %Y')
