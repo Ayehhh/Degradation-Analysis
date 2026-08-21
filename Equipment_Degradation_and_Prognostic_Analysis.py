@@ -428,8 +428,8 @@ def generate_pdf_report(filename):
     story = []
 
     # TEMA WARNA BAHARU (Steel Blue & Slate)
-    PRIMARY_COLOR = colors.HexColor('#1E3A8A')    # Dark Navy Blue untuk Tajuk & Table Header
-    SECONDARY_COLOR = colors.HexColor('#2563EB')  # Royal Blue untuk Section Banner
+    PRIMARY_COLOR = colors.HexColor('#00AE9E')    
+    SECONDARY_COLOR = colors.HexColor('#00509E')  
     ALT_ROW_COLOR = colors.HexColor('#F8FAFC')     # Light Gray Background
     BORDER_COLOR = colors.HexColor('#CBD5E1')      # Slate Border
 
