@@ -34,6 +34,7 @@ st.markdown("This application models physical asset degradation trends and uses 
 st.sidebar.header("1. Asset Information")
 complex_name = st.sidebar.text_input("Complex Name", value="Complex A")
 equipment_name = st.sidebar.text_input("Equipment Name", value="Pump-101")
+analysis_title = st.sidebar.text_input("Analysis Title / Parameter", value="Filter Fouling Trend")
 
 st.sidebar.header("2. Data Source")
 data_source = st.sidebar.selectbox(
@@ -79,8 +80,9 @@ else:  # Sample Data Mode
 
 # Engineering Parameters Inputs
 st.sidebar.header("3. Engineering Parameters")
-ALERT_THRESHOLD = st.sidebar.number_input("Alert Threshold", value=45.0, step=1.0, format="%.2f")
-DANGER_THRESHOLD = st.sidebar.number_input("Danger Threshold", value=75.0, step=1.0, format="%.2f")
+param_unit = st.sidebar.text_input("Measurement Unit", value="bar")
+ALERT_THRESHOLD = st.sidebar.number_input(f"Alert Threshold [{param_unit}]", value=45.0, step=1.0, format="%.2f")
+DANGER_THRESHOLD = st.sidebar.number_input(f"Danger Threshold [{param_unit}]", value=75.0, step=1.0, format="%.2f")
 CONFIDENCE_PCT = st.sidebar.number_input("Confidence Level Analysis [%]", value=95.0, min_value=50.0, max_value=99.9, step=1.0)
 
 # Setup Output Directory
@@ -176,7 +178,7 @@ for name, res in model_results.items():
     model_comparison_data.append({
         "Model Name": name,
         "R² Score": f"{res['r2']:.4f}",
-        "Residual Std": f"{res['resid_std']:.2f}",
+        "Residual Std": f"{res['resid_std']:.2f} {param_unit}".strip(),
         "Status": "✅ Selected (Best Fit)" if name == best_name else "Candidate"
     })
 st.dataframe(pd.DataFrame(model_comparison_data), use_container_width=True)
@@ -186,7 +188,7 @@ st.dataframe(pd.DataFrame(model_comparison_data), use_container_width=True)
 # ==========================================
 m1, m2, m3 = st.columns(3)
 m1.metric("Selected Model", f"{best_name}", f"R² = {best['r2']:.4f}")
-m2.metric("Current Data Value", f"{latest_val:.2f}")
+m2.metric("Current Data Value", f"{latest_val:.2f} {param_unit}".strip())
 m3.metric("Confidence Level", f"{CONFIDENCE_PCT:.1f}%")
 
 def solve_crossing(model, target_val, conf_pct, max_days=3650):
@@ -234,7 +236,7 @@ for label, threshold_val, (e, c, l) in targets_info:
 
     prognosis_data.append({
         "Threshold Level": label,
-        "Threshold Value": f"{threshold_val:.2f}",
+        "Threshold Value": f"{threshold_val:.2f} {param_unit}".strip(),
         "Earliest Date": e_date,
         "Expected Date": c_date,
         "Latest Date": l_date,
@@ -255,7 +257,8 @@ dates_plot = [t0 + timedelta(days=d) for d in x_plot]
 t_val = stats.t.ppf((1 + CONFIDENCE_PCT / 100.0) / 2, best["dof"]) if best["dof"] >= 1 else 0.0
 band_val = t_val * best["resid_std"]
 
-trend_title = f"{complex_name} - {equipment_name} Prognostic Trend"
+trend_title = f"{complex_name} - {equipment_name}: {analysis_title}"
+y_label_text = f"Value [{param_unit}]" if param_unit else "Value"
 
 # --- 6A. STATIC GRAPH FOR PDF REPORT (MATPLOTLIB) ---
 fig_static, ax = plt.subplots(figsize=(10, 5), dpi=150)
@@ -263,10 +266,10 @@ ax.scatter(df["timestamp"], df["value"], color="#1f77b4", s=25, alpha=0.8, label
 ax.plot(dates_plot, y_plot, color="#d62728", linewidth=2, label=f"Best Fit ({best_name})")
 ax.fill_between(dates_plot, y_plot - band_val, y_plot + band_val, color="#d62728", alpha=0.15, label=f"{CONFIDENCE_PCT:.0f}% CI")
 
-ax.axhline(ALERT_THRESHOLD, color="#ff7f0e", linestyle="--", linewidth=1.5, label=f"Alert Limit ({ALERT_THRESHOLD:.2f})")
-ax.axhline(DANGER_THRESHOLD, color="#d62728", linestyle="--", linewidth=1.5, label=f"Danger Limit ({DANGER_THRESHOLD:.2f})")
+ax.axhline(ALERT_THRESHOLD, color="#ff7f0e", linestyle="--", linewidth=1.5, label=f"Alert Limit ({ALERT_THRESHOLD:.2f} {param_unit})".strip())
+ax.axhline(DANGER_THRESHOLD, color="#d62728", linestyle="--", linewidth=1.5, label=f"Danger Limit ({DANGER_THRESHOLD:.2f} {param_unit})".strip())
 
-ax.set_ylabel("Value")
+ax.set_ylabel(y_label_text)
 ax.set_xlabel("Date")
 ax.set_title(trend_title, fontweight="bold")
 ax.legend(loc="upper left", fontsize=8)
@@ -298,13 +301,13 @@ fig_interactive.add_trace(go.Scatter(
     x=dates_plot, y=y_plot, mode='lines', name=f'Best Fit ({best_name})', line=dict(color='#d62728', width=2)
 ))
 
-fig_interactive.add_hline(y=ALERT_THRESHOLD, line_dash="dash", line_color="#ff7f0e", annotation_text=f"Alert ({ALERT_THRESHOLD:.2f})", annotation_position="bottom right")
-fig_interactive.add_hline(y=DANGER_THRESHOLD, line_dash="dash", line_color="#d62728", annotation_text=f"Danger ({DANGER_THRESHOLD:.2f})", annotation_position="bottom right")
+fig_interactive.add_hline(y=ALERT_THRESHOLD, line_dash="dash", line_color="#ff7f0e", annotation_text=f"Alert ({ALERT_THRESHOLD:.2f} {param_unit})".strip(), annotation_position="bottom right")
+fig_interactive.add_hline(y=DANGER_THRESHOLD, line_dash="dash", line_color="#d62728", annotation_text=f"Danger ({DANGER_THRESHOLD:.2f} {param_unit})".strip(), annotation_position="bottom right")
 
 fig_interactive.update_layout(
     title=dict(text=f"<b>{trend_title}</b>", x=0.5),
     xaxis_title="Date",
-    yaxis_title="Measured Parameter Value",
+    yaxis_title=y_label_text,
     hovermode="x unified",
     legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
     margin=dict(l=40, r=40, t=50, b=50),
@@ -340,8 +343,10 @@ def generate_pdf_report(filename):
         [Paragraph("Parameter", hdr_style_l), Paragraph("Value", hdr_style)],
         [Paragraph("Complex Name", body_style_l), Paragraph(complex_name, body_style)],
         [Paragraph("Equipment Name", body_style_l), Paragraph(equipment_name, body_style)],
-        [Paragraph("Alert Threshold", body_style_l), Paragraph(f"{ALERT_THRESHOLD:.2f}", body_style)],
-        [Paragraph("Danger Threshold", body_style_l), Paragraph(f"{DANGER_THRESHOLD:.2f}", body_style)],
+        [Paragraph("Analysis Title / Parameter", body_style_l), Paragraph(analysis_title, body_style)],
+        [Paragraph("Measurement Unit", body_style_l), Paragraph(param_unit if param_unit else "N/A", body_style)],
+        [Paragraph("Alert Threshold", body_style_l), Paragraph(f"{ALERT_THRESHOLD:.2f} {param_unit}".strip(), body_style)],
+        [Paragraph("Danger Threshold", body_style_l), Paragraph(f"{DANGER_THRESHOLD:.2f} {param_unit}".strip(), body_style)],
         [Paragraph("Confidence Level", body_style_l), Paragraph(f"{CONFIDENCE_PCT:.1f} %", body_style)]
     ]
     t_spec = Table(spec_data, colWidths=[300, 200])
