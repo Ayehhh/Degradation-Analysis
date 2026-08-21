@@ -55,7 +55,7 @@ if data_source == "Upload Excel File":
 elif data_source == "Copy & Paste Bulk Data":
     st.sidebar.markdown("**Paste Data Below** (Format: Two columns: `Timestamp`, `Value`)")
     paste_data = st.sidebar.text_area("Paste tab or comma-separated data:", height=150, 
-                                     placeholder="12/05/2026\t0.312036\n12/05/2026\t0.311088\n13/05/2026\t0.315624")
+                                     placeholder="12/05/2026\t0.312\n12/05/2026\t0.311\n13/05/2026\t0.316")
     if paste_data.strip():
         try:
             df = pd.read_csv(io.StringIO(paste_data), sep=None, engine='python', header=None)
@@ -88,12 +88,12 @@ trend_direction = st.sidebar.selectbox(
 )
 is_increasing = (trend_direction == "Progressive Upwards (High is Bad)")
 
-# Set default thresholds based on direction mode
-default_alert = 0.40 if is_increasing else 0.20
-default_danger = 0.50 if is_increasing else 0.10
+# Set default thresholds based on direction mode (Formatted to 3 decimal places)
+default_alert = 0.400 if is_increasing else 0.200
+default_danger = 0.500 if is_increasing else 0.100
 
-ALERT_THRESHOLD = st.sidebar.number_input(f"Alert Threshold [{param_unit}]", value=default_alert, step=0.01, format="%.4f")
-DANGER_THRESHOLD = st.sidebar.number_input(f"Danger Threshold [{param_unit}]", value=default_danger, step=0.01, format="%.4f")
+ALERT_THRESHOLD = st.sidebar.number_input(f"Alert Threshold [{param_unit}]", value=default_alert, step=0.001, format="%.3f")
+DANGER_THRESHOLD = st.sidebar.number_input(f"Danger Threshold [{param_unit}]", value=default_danger, step=0.001, format="%.3f")
 CONFIDENCE_PCT = st.sidebar.number_input("Confidence Level Analysis [%]", value=95.0, min_value=50.0, max_value=99.9, step=1.0)
 
 # Setup Output Directory
@@ -182,7 +182,7 @@ if not model_results:
     st.error("❌ Unable to fit regression models with the selected degradation direction. Check threshold orientation.")
     st.stop()
 
-# --- FEATURE 1: MODEL SELECTION BY USER ---
+# --- MODEL SELECTION BY USER ---
 st.sidebar.header("4. Model Selection")
 auto_best = max(model_results, key=lambda k: model_results[k]["r2"])
 model_options = ["Auto (Select Best R²)"] + list(model_results.keys())
@@ -215,7 +215,7 @@ for name, res in model_results.items():
     model_comparison_data.append({
         "Model Name": name,
         "R² Score": f"{res['r2']:.4f}",
-        "Residual Std": f"{res['resid_std']:.4f} {param_unit}".strip(),
+        "Residual Std": f"{res['resid_std']:.3f} {param_unit}".strip(),
         "Status": "✅ Selected" if name == best_name else ("Best Fit" if name == auto_best else "Candidate")
     })
 st.dataframe(pd.DataFrame(model_comparison_data), use_container_width=True)
@@ -225,7 +225,7 @@ st.dataframe(pd.DataFrame(model_comparison_data), use_container_width=True)
 # ==========================================
 m1, m2, m3 = st.columns(3)
 m1.metric("Selected Model", f"{best_name}", f"R² = {best['r2']:.4f}")
-m2.metric("Current Data Value", f"{latest_val:.4f} {param_unit}".strip())
+m2.metric("Current Data Value", f"{latest_val:.3f} {param_unit}".strip())
 m3.metric("Direction Mode", "Upwards ⬆️" if is_increasing else "Downwards ⬇️")
 
 def solve_crossing(model, target_val, conf_pct, max_days=36500):
@@ -273,7 +273,7 @@ for label, threshold_val, (e, c, l) in targets_info:
 
     prognosis_data.append({
         "Threshold Level": label,
-        "Threshold Value": f"{threshold_val:.4f} {param_unit}".strip(),
+        "Threshold Value": f"{threshold_val:.3f} {param_unit}".strip(),
         "Earliest Date": e_date,
         "Expected Date": c_date,
         "Latest Date": l_date,
@@ -297,14 +297,14 @@ band_val = t_val * best["resid_std"]
 trend_title = f"{complex_name} - {equipment_name}: {analysis_title}"
 y_label_text = f"Value [{param_unit}]" if param_unit else "Value"
 
-# --- FEATURE 2: STATIC GRAPH WITH BREACH CALLOUTS (MATPLOTLIB / PNG) ---
+# --- STATIC GRAPH WITH BREACH CALLOUTS (MATPLOTLIB / PNG) ---
 fig_static, ax = plt.subplots(figsize=(11, 5.5), dpi=150)
 ax.scatter(df["timestamp"], df["value"], color="#1f77b4", s=30, alpha=0.8, label="Measured Data")
 ax.plot(dates_plot, y_plot, color="#d62728", linewidth=2, label=f"Model Fit ({best_name})")
 ax.fill_between(dates_plot, y_plot - band_val, y_plot + band_val, color="#d62728", alpha=0.15, label=f"{CONFIDENCE_PCT:.0f}% CI")
 
-ax.axhline(ALERT_THRESHOLD, color="#ff7f0e", linestyle="--", linewidth=1.5, label=f"Alert Limit ({ALERT_THRESHOLD:.4f} {param_unit})".strip())
-ax.axhline(DANGER_THRESHOLD, color="#d62728", linestyle="--", linewidth=1.5, label=f"Danger Limit ({DANGER_THRESHOLD:.4f} {param_unit})".strip())
+ax.axhline(ALERT_THRESHOLD, color="#ff7f0e", linestyle="--", linewidth=1.5, label=f"Alert Limit ({ALERT_THRESHOLD:.3f} {param_unit})".strip())
+ax.axhline(DANGER_THRESHOLD, color="#d62728", linestyle="--", linewidth=1.5, label=f"Danger Limit ({DANGER_THRESHOLD:.3f} {param_unit})".strip())
 
 # Add Callout Annotations to Static Plot (Matplotlib)
 callout_points_mpl = [
@@ -346,7 +346,7 @@ plot_img_path = os.path.join(OUTPUT_DIR, "prognostic_trend_plot.png")
 fig_static.savefig(plot_img_path, dpi=150, bbox_inches="tight")
 plt.close(fig_static)
 
-# --- 6B. INTERACTIVE GRAPH (PLOTLY) WITH BREACH CALLOUTS ---
+# --- INTERACTIVE GRAPH (PLOTLY) WITH BREACH CALLOUTS ---
 fig_interactive = go.Figure()
 
 # Measured Data Points
@@ -373,11 +373,11 @@ fig_interactive.add_trace(go.Scatter(
 # Threshold Lines
 fig_interactive.add_hline(
     y=ALERT_THRESHOLD, line_dash="dash", line_color="#ff7f0e", 
-    annotation_text=f"Alert ({ALERT_THRESHOLD:.4f} {param_unit})".strip(), annotation_position="bottom right"
+    annotation_text=f"Alert ({ALERT_THRESHOLD:.3f} {param_unit})".strip(), annotation_position="bottom right"
 )
 fig_interactive.add_hline(
     y=DANGER_THRESHOLD, line_dash="dash", line_color="#d62728", 
-    annotation_text=f"Danger ({DANGER_THRESHOLD:.4f} {param_unit})".strip(), annotation_position="bottom right"
+    annotation_text=f"Danger ({DANGER_THRESHOLD:.3f} {param_unit})".strip(), annotation_position="bottom right"
 )
 
 # Callout Markers & Annotations for Expected Breach Dates
@@ -427,8 +427,14 @@ def generate_pdf_report(filename):
     styles = getSampleStyleSheet()
     story = []
 
-    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=13, textColor=colors.HexColor('#1B365D'), alignment=1, spaceAfter=12)
-    section_style = ParagraphStyle('SectionStyle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=10, textColor=colors.HexColor('#FFFFFF'), backColor=colors.HexColor('#4A777A'), spaceBefore=10, spaceAfter=6, leftIndent=4)
+    # TEMA WARNA BAHARU (Steel Blue & Slate)
+    PRIMARY_COLOR = colors.HexColor('#1E3A8A')    # Dark Navy Blue untuk Tajuk & Table Header
+    SECONDARY_COLOR = colors.HexColor('#2563EB')  # Royal Blue untuk Section Banner
+    ALT_ROW_COLOR = colors.HexColor('#F8FAFC')     # Light Gray Background
+    BORDER_COLOR = colors.HexColor('#CBD5E1')      # Slate Border
+
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=13, textColor=PRIMARY_COLOR, alignment=1, spaceAfter=12)
+    section_style = ParagraphStyle('SectionStyle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=10, textColor=colors.HexColor('#FFFFFF'), backColor=SECONDARY_COLOR, spaceBefore=10, spaceAfter=6, leftIndent=6)
 
     hdr_style = ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=colors.whitesmoke, alignment=1)
     hdr_style_l = ParagraphStyle('THL', fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=colors.whitesmoke, alignment=0)
@@ -447,15 +453,16 @@ def generate_pdf_report(filename):
         [Paragraph("Analysis Title / Parameter", body_style_l), Paragraph(analysis_title, body_style)],
         [Paragraph("Degradation Mode", body_style_l), Paragraph(trend_direction, body_style)],
         [Paragraph("Measurement Unit", body_style_l), Paragraph(param_unit if param_unit else "N/A", body_style)],
-        [Paragraph("Alert Threshold", body_style_l), Paragraph(f"{ALERT_THRESHOLD:.4f} {param_unit}".strip(), body_style)],
-        [Paragraph("Danger Threshold", body_style_l), Paragraph(f"{DANGER_THRESHOLD:.4f} {param_unit}".strip(), body_style)],
+        [Paragraph("Alert Threshold", body_style_l), Paragraph(f"{ALERT_THRESHOLD:.3f} {param_unit}".strip(), body_style)],
+        [Paragraph("Danger Threshold", body_style_l), Paragraph(f"{DANGER_THRESHOLD:.3f} {param_unit}".strip(), body_style)],
         [Paragraph("Confidence Level", body_style_l), Paragraph(f"{CONFIDENCE_PCT:.1f} %", body_style)]
     ]
     t_spec = Table(spec_data, colWidths=[300, 200])
     t_spec.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1B365D')),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('BACKGROUND', (0, 0), (-1, 0), PRIMARY_COLOR),
+        ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, ALT_ROW_COLOR]),
         ('TOPPADDING', (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
@@ -476,9 +483,10 @@ def generate_pdf_report(filename):
 
     t_comp = Table(comp_table_data, colWidths=[130, 100, 120, 150])
     t_comp.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1B365D')),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('BACKGROUND', (0, 0), (-1, 0), PRIMARY_COLOR),
+        ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, ALT_ROW_COLOR]),
         ('TOPPADDING', (0, 0), (-1, -1), 3),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
     ]))
@@ -501,9 +509,10 @@ def generate_pdf_report(filename):
 
     t_prog = Table(prog_table_data, colWidths=[90, 85, 80, 80, 85, 80])
     t_prog.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1B365D')),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('BACKGROUND', (0, 0), (-1, 0), PRIMARY_COLOR),
+        ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, ALT_ROW_COLOR]),
         ('TOPPADDING', (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
