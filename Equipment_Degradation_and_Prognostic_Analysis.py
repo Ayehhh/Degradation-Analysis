@@ -78,7 +78,7 @@ else:  # Sample Data Mode
         "value": synthetic_degradation
     })
 
-# Engineering Parameters Inputs (Universal & ALWAYS Visible across all Data Sources)
+# Engineering Parameters Inputs
 st.sidebar.header("3. Engineering Parameters")
 param_unit = st.sidebar.text_input("Measurement Unit", value="bar")
 
@@ -137,7 +137,6 @@ def _loglogis(x, a, alpha, beta): return a * (1.0 / (1.0 + (np.maximum(x, 1e-6) 
 max_v = max(np.max(degradation_val) * 2.5, 100.0)
 mean_d = max(np.mean(days), 1.0)
 
-# Set model parameter bounds based on degradation direction
 if is_increasing:
     lin_bounds = ([0, -np.inf], [np.inf, np.inf])
     quad_bounds = ([0, 0, -np.inf], [np.inf, np.inf, np.inf])
@@ -156,7 +155,6 @@ MODELS = {
     "Logarithmic": (_logf, [0.01 if is_increasing else -0.01, np.mean(degradation_val)], log_bounds),
 }
 
-# Add Power Law and CDF models for Progressive Upwards mode
 if is_increasing:
     MODELS["Power Law"] = (_power, [0.1, 1.2], (0, np.inf))
     MODELS["Log-Normal CDF"] = (_lognorm, [max_v, 1.0, mean_d], ([0, 0.01, 0.1], [max_v * 5, 10.0, 50000]))
@@ -310,36 +308,72 @@ plot_img_path = os.path.join(OUTPUT_DIR, "prognostic_trend_plot.png")
 fig_static.savefig(plot_img_path, dpi=150, bbox_inches="tight")
 plt.close(fig_static)
 
-# --- 6B. INTERACTIVE GRAPH (PLOTLY) ---
+# --- 6B. INTERACTIVE GRAPH (PLOTLY) WITH BREACH CALLOUTS ---
 fig_interactive = go.Figure()
 
+# Measured Data Points
 fig_interactive.add_trace(go.Scatter(
     x=df["timestamp"], y=df["value"], mode='markers', name='Measured Data', marker=dict(color='#1f77b4', size=8)
 ))
 
+# Confidence Interval Lower Bound
 fig_interactive.add_trace(go.Scatter(
     x=dates_plot, y=y_plot - band_val, mode='lines', line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo="skip"
 ))
 
+# Confidence Interval Upper Bound Fill
 fig_interactive.add_trace(go.Scatter(
     x=dates_plot, y=y_plot + band_val, mode='lines', fill='tonexty', fillcolor='rgba(214, 39, 40, 0.15)',
     line=dict(color='rgba(255,255,255,0)'), name=f"{CONFIDENCE_PCT:.0f}% Confidence Interval", hoverinfo="skip"
 ))
 
+# Best Fit Curve
 fig_interactive.add_trace(go.Scatter(
     x=dates_plot, y=y_plot, mode='lines', name=f'Best Fit ({best_name})', line=dict(color='#d62728', width=2)
 ))
 
-fig_interactive.add_hline(y=ALERT_THRESHOLD, line_dash="dash", line_color="#ff7f0e", annotation_text=f"Alert ({ALERT_THRESHOLD:.4f} {param_unit})".strip(), annotation_position="bottom right")
-fig_interactive.add_hline(y=DANGER_THRESHOLD, line_dash="dash", line_color="#d62728", annotation_text=f"Danger ({DANGER_THRESHOLD:.4f} {param_unit})".strip(), annotation_position="bottom right")
+# Threshold Lines
+fig_interactive.add_hline(
+    y=ALERT_THRESHOLD, line_dash="dash", line_color="#ff7f0e", 
+    annotation_text=f"Alert ({ALERT_THRESHOLD:.4f} {param_unit})".strip(), annotation_position="bottom right"
+)
+fig_interactive.add_hline(
+    y=DANGER_THRESHOLD, line_dash="dash", line_color="#d62728", 
+    annotation_text=f"Danger ({DANGER_THRESHOLD:.4f} {param_unit})".strip(), annotation_position="bottom right"
+)
+
+# Callout Markers & Annotations for Expected Breach Dates
+callout_points = [
+    ("Alert", f_Alert[1], ALERT_THRESHOLD, "#ff7f0e", "bottom center" if is_increasing else "top center"),
+    ("Danger", f_Danger[1], DANGER_THRESHOLD, "#d62728", "top center" if is_increasing else "bottom center")
+]
+
+for label, day_val, threshold_val, color_hex, text_pos in callout_points:
+    if day_val is not None and day_val >= 0:
+        breach_dt = t0 + timedelta(days=day_val)
+        date_str = breach_dt.strftime('%d %b %Y')
+        rul_val = int(day_val - latest_day)
+        
+        # Add a prominent marker at the intersection point
+        fig_interactive.add_trace(go.Scatter(
+            x=[breach_dt],
+            y=[threshold_val],
+            mode='markers+text',
+            name=f'Expected {label} Reach',
+            marker=dict(color=color_hex, size=12, symbol='diamond', line=dict(color='white', width=1.5)),
+            text=[f"<b>Expected {label}: {date_str}</b><br>({rul_val} Days RUL)"],
+            textposition=text_pos,
+            textfont=dict(color=color_hex, size=11),
+            hoverinfo='text'
+        ))
 
 fig_interactive.update_layout(
     title=dict(text=f"<b>{trend_title}</b>", x=0.5),
     xaxis_title="Date",
     yaxis_title=y_label_text,
     hovermode="x unified",
-    legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
-    margin=dict(l=40, r=40, t=50, b=50),
+    legend=dict(orientation="h", yanchor="bottom", y=-0.35, xanchor="center", x=0.5),
+    margin=dict(l=40, r=40, t=50, b=60),
     template="plotly_white"
 )
 
