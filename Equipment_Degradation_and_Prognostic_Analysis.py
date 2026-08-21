@@ -78,11 +78,22 @@ else:  # Sample Data Mode
         "value": synthetic_degradation
     })
 
-# Engineering Parameters Inputs (Universal across all Data Sources)
+# Engineering Parameters Inputs (Universal & ALWAYS Visible across all Data Sources)
 st.sidebar.header("3. Engineering Parameters")
 param_unit = st.sidebar.text_input("Measurement Unit", value="bar")
-ALERT_THRESHOLD = st.sidebar.number_input(f"Alert Threshold [{param_unit}]", value=0.40, step=0.01, format="%.4f")
-DANGER_THRESHOLD = st.sidebar.number_input(f"Danger Threshold [{param_unit}]", value=0.50, step=0.01, format="%.4f")
+
+trend_direction = st.sidebar.selectbox(
+    "Degradation Trend Direction:",
+    ["Progressive Upwards (High is Bad)", "Progressive Downwards (High is Good)"]
+)
+is_increasing = (trend_direction == "Progressive Upwards (High is Bad)")
+
+# Set default thresholds based on direction mode
+default_alert = 0.40 if is_increasing else 0.20
+default_danger = 0.50 if is_increasing else 0.10
+
+ALERT_THRESHOLD = st.sidebar.number_input(f"Alert Threshold [{param_unit}]", value=default_alert, step=0.01, format="%.4f")
+DANGER_THRESHOLD = st.sidebar.number_input(f"Danger Threshold [{param_unit}]", value=default_danger, step=0.01, format="%.4f")
 CONFIDENCE_PCT = st.sidebar.number_input("Confidence Level Analysis [%]", value=95.0, min_value=50.0, max_value=99.9, step=1.0)
 
 # Setup Output Directory
@@ -98,7 +109,6 @@ if len(df.columns) >= 2:
     df = df.iloc[:, :2]
     df.columns = ["timestamp", "value"]
 
-# FIXED: Handle DD/MM/YYYY date formatting seamlessly
 df["timestamp"] = pd.to_datetime(df["timestamp"], dayfirst=True, errors="coerce")
 df["value"] = pd.to_numeric(df["value"], errors="coerce")
 df = df.dropna().sort_values("timestamp").reset_index(drop=True)
@@ -112,11 +122,8 @@ days = (df["timestamp"] - t0).dt.total_seconds().values / 86400.0
 degradation_val = df["value"].values
 latest_val = df["value"].iloc[-1]
 
-# Check direction of degradation (increasing vs decreasing threshold breach)
-is_increasing = ALERT_THRESHOLD > df["value"].iloc[0]
-
 # ==========================================
-# 3. REGRESSION MODELING SUITE
+# 3. REGRESSION MODELING SUITE (DIRECTION-AWARE)
 # ==========================================
 def _lin(x, a, b): return a * x + b
 def _quad(x, a, b, c): return a * x**2 + b * x + c
@@ -130,16 +137,31 @@ def _loglogis(x, a, alpha, beta): return a * (1.0 / (1.0 + (np.maximum(x, 1e-6) 
 max_v = max(np.max(degradation_val) * 2.5, 100.0)
 mean_d = max(np.mean(days), 1.0)
 
+# Set model parameter bounds based on degradation direction
+if is_increasing:
+    lin_bounds = ([0, -np.inf], [np.inf, np.inf])
+    quad_bounds = ([0, 0, -np.inf], [np.inf, np.inf, np.inf])
+    expo_bounds = ([0, 0], [np.inf, np.inf])
+    log_bounds = ([0, -np.inf], [np.inf, np.inf])
+else:
+    lin_bounds = ([-np.inf, -np.inf], [0, np.inf])
+    quad_bounds = ([-np.inf, -np.inf, -np.inf], [0, 0, np.inf])
+    expo_bounds = ([0, -np.inf], [np.inf, 0])
+    log_bounds = ([-np.inf, -np.inf], [0, np.inf])
+
 MODELS = {
-    "Linear": (_lin, [0.001, np.mean(degradation_val)], (-np.inf, np.inf)),
-    "Quadratic": (_quad, [0.0001, 0.001, np.mean(degradation_val)], (-np.inf, np.inf)),
-    "Power Law": (_power, [0.1, 1.2], (0, np.inf)),
-    "Exponential": (_expo, [np.mean(degradation_val), 0.001], (-np.inf, np.inf)),
-    "Logarithmic": (_logf, [0.01, np.mean(degradation_val)], (-np.inf, np.inf)),
-    "Log-Normal CDF": (_lognorm, [max_v, 1.0, mean_d], ([0, 0.01, 0.1], [max_v * 5, 10.0, 50000])),
-    "Weibull CDF": (_weibull, [max_v, 1.5, mean_d], ([0, 0.1, 0.1], [max_v * 5, 10.0, 50000])),
-    "Log-Logistic CDF": (_loglogis, [max_v, mean_d, 1.5], ([0, 0.1, 0.1], [max_v * 5, 50000, 10.0]))
+    "Linear": (_lin, [0.001 if is_increasing else -0.001, np.mean(degradation_val)], lin_bounds),
+    "Quadratic": (_quad, [0.0001 if is_increasing else -0.0001, 0.001 if is_increasing else -0.001, np.mean(degradation_val)], quad_bounds),
+    "Exponential": (_expo, [np.mean(degradation_val), 0.001 if is_increasing else -0.001], expo_bounds),
+    "Logarithmic": (_logf, [0.01 if is_increasing else -0.01, np.mean(degradation_val)], log_bounds),
 }
+
+# Add Power Law and CDF models for Progressive Upwards mode
+if is_increasing:
+    MODELS["Power Law"] = (_power, [0.1, 1.2], (0, np.inf))
+    MODELS["Log-Normal CDF"] = (_lognorm, [max_v, 1.0, mean_d], ([0, 0.01, 0.1], [max_v * 5, 10.0, 50000]))
+    MODELS["Weibull CDF"] = (_weibull, [max_v, 1.5, mean_d], ([0, 0.1, 0.1], [max_v * 5, 10.0, 50000]))
+    MODELS["Log-Logistic CDF"] = (_loglogis, [max_v, mean_d, 1.5], ([0, 0.1, 0.1], [max_v * 5, 50000, 10.0]))
 
 model_results = {}
 for name, (func, p0, bnds) in MODELS.items():
@@ -159,7 +181,7 @@ for name, (func, p0, bnds) in MODELS.items():
         pass
 
 if not model_results:
-    st.error("❌ Unable to fit any regression models to the provided data.")
+    st.error("❌ Unable to fit regression models with the selected degradation direction. Check threshold orientation.")
     st.stop()
 
 best_name = max(model_results, key=lambda k: model_results[k]["r2"])
@@ -174,7 +196,9 @@ with st.expander("💡 Technical Guidance: Metrics & RUL Definition"):
     st.markdown("""
     * **Remaining Useful Life (RUL):** The calculated operational time remaining before degradation reaches or passes an Alert or Danger limit.
       $$\\text{RUL (Days)} = \\text{Expected Breach Date} - \\text{Last Observed Data Date}$$
-    * **Residual Standard Deviation (Residual Std):** Quantifies error or scatter between observed measurement points and fitted curve values. Lower values mean higher precision.
+    * **Degradation Direction Mode:** 
+      * **Progressive Upwards:** Values increase toward limits (e.g., Vibration, Temperature, Fouling Delta-P).
+      * **Progressive Downwards:** Values decrease toward limits (e.g., Component Thickness, Pressure, Flow Rate).
     * **$R^2$ Score (Coefficient of Determination):** Measures goodness-of-fit ($1.0$ indicates a perfect mathematical fit).
     """)
 
@@ -194,7 +218,7 @@ st.dataframe(pd.DataFrame(model_comparison_data), use_container_width=True)
 m1, m2, m3 = st.columns(3)
 m1.metric("Selected Model", f"{best_name}", f"R² = {best['r2']:.4f}")
 m2.metric("Current Data Value", f"{latest_val:.4f} {param_unit}".strip())
-m3.metric("Confidence Level", f"{CONFIDENCE_PCT:.1f}%")
+m3.metric("Direction Mode", "Upwards ⬆️" if is_increasing else "Downwards ⬇️")
 
 def solve_crossing(model, target_val, conf_pct, max_days=36500):
     func, popt, dof, std = model["func"], model["popt"], model["dof"], model["resid_std"]
@@ -220,7 +244,6 @@ def solve_crossing(model, target_val, conf_pct, max_days=36500):
 
     return early, central, late
 
-# Dynamic Horizon Extension (Extended up to 100 years if needed)
 max_horizon = max(days[-1] * 10, 36500)
 f_Alert = solve_crossing(best, ALERT_THRESHOLD, CONFIDENCE_PCT, max_horizon)
 f_Danger = solve_crossing(best, DANGER_THRESHOLD, CONFIDENCE_PCT, max_horizon)
@@ -278,7 +301,7 @@ ax.axhline(DANGER_THRESHOLD, color="#d62728", linestyle="--", linewidth=1.5, lab
 ax.set_ylabel(y_label_text)
 ax.set_xlabel("Date")
 ax.set_title(trend_title, fontweight="bold")
-ax.legend(loc="upper left", fontsize=8)
+ax.legend(loc="upper left" if is_increasing else "lower left", fontsize=8)
 ax.grid(True, linestyle=":", alpha=0.6)
 fig_static.autofmt_xdate()
 fig_static.tight_layout()
@@ -350,6 +373,7 @@ def generate_pdf_report(filename):
         [Paragraph("Complex Name", body_style_l), Paragraph(complex_name, body_style)],
         [Paragraph("Equipment Name", body_style_l), Paragraph(equipment_name, body_style)],
         [Paragraph("Analysis Title / Parameter", body_style_l), Paragraph(analysis_title, body_style)],
+        [Paragraph("Degradation Mode", body_style_l), Paragraph(trend_direction, body_style)],
         [Paragraph("Measurement Unit", body_style_l), Paragraph(param_unit if param_unit else "N/A", body_style)],
         [Paragraph("Alert Threshold", body_style_l), Paragraph(f"{ALERT_THRESHOLD:.4f} {param_unit}".strip(), body_style)],
         [Paragraph("Danger Threshold", body_style_l), Paragraph(f"{DANGER_THRESHOLD:.4f} {param_unit}".strip(), body_style)],
