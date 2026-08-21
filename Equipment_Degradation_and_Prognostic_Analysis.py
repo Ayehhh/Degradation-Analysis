@@ -55,7 +55,7 @@ if data_source == "Upload Excel File":
 elif data_source == "Copy & Paste Bulk Data":
     st.sidebar.markdown("**Paste Data Below** (Format: Two columns: `Timestamp`, `Value`)")
     paste_data = st.sidebar.text_area("Paste tab or comma-separated data:", height=150, 
-                                     placeholder="2025-01-01\t10.5\n2025-02-01\t12.1\n2025-03-01\t14.8")
+                                     placeholder="12/05/2026\t0.312036\n12/05/2026\t0.311088\n13/05/2026\t0.315624")
     if paste_data.strip():
         try:
             df = pd.read_csv(io.StringIO(paste_data), sep=None, engine='python', header=None)
@@ -78,11 +78,11 @@ else:  # Sample Data Mode
         "value": synthetic_degradation
     })
 
-# Engineering Parameters Inputs
+# Engineering Parameters Inputs (Universal across all Data Sources)
 st.sidebar.header("3. Engineering Parameters")
 param_unit = st.sidebar.text_input("Measurement Unit", value="bar")
-ALERT_THRESHOLD = st.sidebar.number_input(f"Alert Threshold [{param_unit}]", value=45.0, step=1.0, format="%.2f")
-DANGER_THRESHOLD = st.sidebar.number_input(f"Danger Threshold [{param_unit}]", value=75.0, step=1.0, format="%.2f")
+ALERT_THRESHOLD = st.sidebar.number_input(f"Alert Threshold [{param_unit}]", value=0.40, step=0.01, format="%.4f")
+DANGER_THRESHOLD = st.sidebar.number_input(f"Danger Threshold [{param_unit}]", value=0.50, step=0.01, format="%.4f")
 CONFIDENCE_PCT = st.sidebar.number_input("Confidence Level Analysis [%]", value=95.0, min_value=50.0, max_value=99.9, step=1.0)
 
 # Setup Output Directory
@@ -98,9 +98,14 @@ if len(df.columns) >= 2:
     df = df.iloc[:, :2]
     df.columns = ["timestamp", "value"]
 
-df["timestamp"] = pd.to_datetime(df["timestamp"])
+# FIXED: Handle DD/MM/YYYY date formatting seamlessly
+df["timestamp"] = pd.to_datetime(df["timestamp"], dayfirst=True, errors="coerce")
 df["value"] = pd.to_numeric(df["value"], errors="coerce")
 df = df.dropna().sort_values("timestamp").reset_index(drop=True)
+
+if df.empty:
+    st.error("❌ No valid data points found. Please check your input date format or values.")
+    st.stop()
 
 t0 = df["timestamp"].iloc[0]
 days = (df["timestamp"] - t0).dt.total_seconds().values / 86400.0
@@ -126,11 +131,11 @@ max_v = max(np.max(degradation_val) * 2.5, 100.0)
 mean_d = max(np.mean(days), 1.0)
 
 MODELS = {
-    "Linear": (_lin, [1.0, 0.0], (-np.inf, np.inf)),
-    "Quadratic": (_quad, [0.0001, 0.1, 0.0], (-np.inf, np.inf)),
+    "Linear": (_lin, [0.001, np.mean(degradation_val)], (-np.inf, np.inf)),
+    "Quadratic": (_quad, [0.0001, 0.001, np.mean(degradation_val)], (-np.inf, np.inf)),
     "Power Law": (_power, [0.1, 1.2], (0, np.inf)),
-    "Exponential": (_expo, [1.0, 0.001], (-np.inf, np.inf)),
-    "Logarithmic": (_logf, [10.0, 0.0], (-np.inf, np.inf)),
+    "Exponential": (_expo, [np.mean(degradation_val), 0.001], (-np.inf, np.inf)),
+    "Logarithmic": (_logf, [0.01, np.mean(degradation_val)], (-np.inf, np.inf)),
     "Log-Normal CDF": (_lognorm, [max_v, 1.0, mean_d], ([0, 0.01, 0.1], [max_v * 5, 10.0, 50000])),
     "Weibull CDF": (_weibull, [max_v, 1.5, mean_d], ([0, 0.1, 0.1], [max_v * 5, 10.0, 50000])),
     "Log-Logistic CDF": (_loglogis, [max_v, mean_d, 1.5], ([0, 0.1, 0.1], [max_v * 5, 50000, 10.0]))
@@ -153,6 +158,10 @@ for name, (func, p0, bnds) in MODELS.items():
     except Exception:
         pass
 
+if not model_results:
+    st.error("❌ Unable to fit any regression models to the provided data.")
+    st.stop()
+
 best_name = max(model_results, key=lambda k: model_results[k]["r2"])
 best = model_results[best_name]
 
@@ -167,10 +176,6 @@ with st.expander("💡 Technical Guidance: Metrics & RUL Definition"):
       $$\\text{RUL (Days)} = \\text{Expected Breach Date} - \\text{Last Observed Data Date}$$
     * **Residual Standard Deviation (Residual Std):** Quantifies error or scatter between observed measurement points and fitted curve values. Lower values mean higher precision.
     * **$R^2$ Score (Coefficient of Determination):** Measures goodness-of-fit ($1.0$ indicates a perfect mathematical fit).
-    * **Model Selection Guidance:**
-        * **Linear / Quadratic / Power Law:** Best suited for constant or steadily progressing wear processes.
-        * **Exponential:** Fits accelerating structural, chemical, or thermal degradation modes.
-        * **CDF Models (Log-Normal, Weibull, Log-Logistic):** Effective when wear rate slows down or stabilizes over prolonged periods.
     """)
 
 model_comparison_data = []
@@ -178,7 +183,7 @@ for name, res in model_results.items():
     model_comparison_data.append({
         "Model Name": name,
         "R² Score": f"{res['r2']:.4f}",
-        "Residual Std": f"{res['resid_std']:.2f} {param_unit}".strip(),
+        "Residual Std": f"{res['resid_std']:.4f} {param_unit}".strip(),
         "Status": "✅ Selected (Best Fit)" if name == best_name else "Candidate"
     })
 st.dataframe(pd.DataFrame(model_comparison_data), use_container_width=True)
@@ -188,16 +193,16 @@ st.dataframe(pd.DataFrame(model_comparison_data), use_container_width=True)
 # ==========================================
 m1, m2, m3 = st.columns(3)
 m1.metric("Selected Model", f"{best_name}", f"R² = {best['r2']:.4f}")
-m2.metric("Current Data Value", f"{latest_val:.2f} {param_unit}".strip())
+m2.metric("Current Data Value", f"{latest_val:.4f} {param_unit}".strip())
 m3.metric("Confidence Level", f"{CONFIDENCE_PCT:.1f}%")
 
-def solve_crossing(model, target_val, conf_pct, max_days=3650):
+def solve_crossing(model, target_val, conf_pct, max_days=36500):
     func, popt, dof, std = model["func"], model["popt"], model["dof"], model["resid_std"]
     t_val = stats.t.ppf((1 + conf_pct / 100.0) / 2, dof) if dof >= 1 else 0.0
     band = t_val * std
 
     def get_date(f):
-        xs = np.linspace(0, max_days, 15000)
+        xs = np.linspace(0, max_days, 30000)
         ys = f(xs)
         idx = np.where(np.diff(np.sign(ys)) != 0)[0]
         if len(idx) == 0: return None
@@ -212,10 +217,11 @@ def solve_crossing(model, target_val, conf_pct, max_days=3650):
         early = get_date(lambda x: func(x, *popt) - band - target_val)
         central = get_date(lambda x: func(x, *popt) - target_val)
         late = get_date(lambda x: func(x, *popt) + band - target_val)
-        
+
     return early, central, late
 
-max_horizon = max(days[-1] * 4, days[-1] + 3650)
+# Dynamic Horizon Extension (Extended up to 100 years if needed)
+max_horizon = max(days[-1] * 10, 36500)
 f_Alert = solve_crossing(best, ALERT_THRESHOLD, CONFIDENCE_PCT, max_horizon)
 f_Danger = solve_crossing(best, DANGER_THRESHOLD, CONFIDENCE_PCT, max_horizon)
 
@@ -236,7 +242,7 @@ for label, threshold_val, (e, c, l) in targets_info:
 
     prognosis_data.append({
         "Threshold Level": label,
-        "Threshold Value": f"{threshold_val:.2f} {param_unit}".strip(),
+        "Threshold Value": f"{threshold_val:.4f} {param_unit}".strip(),
         "Earliest Date": e_date,
         "Expected Date": c_date,
         "Latest Date": l_date,
@@ -249,7 +255,7 @@ st.table(pd.DataFrame(prognosis_data))
 # 6. VISUALIZATION
 # ==========================================
 candidate_days = [d for d in [f_Alert[1], f_Danger[1]] if d is not None]
-x_max_plot = max(candidate_days) * 1.15 if candidate_days else days[-1] * 2
+x_max_plot = max(candidate_days) * 1.15 if candidate_days else max(days[-1] * 3, 30)
 x_plot = np.linspace(0, x_max_plot, 500)
 y_plot = best["func"](x_plot, *best["popt"])
 dates_plot = [t0 + timedelta(days=d) for d in x_plot]
@@ -266,8 +272,8 @@ ax.scatter(df["timestamp"], df["value"], color="#1f77b4", s=25, alpha=0.8, label
 ax.plot(dates_plot, y_plot, color="#d62728", linewidth=2, label=f"Best Fit ({best_name})")
 ax.fill_between(dates_plot, y_plot - band_val, y_plot + band_val, color="#d62728", alpha=0.15, label=f"{CONFIDENCE_PCT:.0f}% CI")
 
-ax.axhline(ALERT_THRESHOLD, color="#ff7f0e", linestyle="--", linewidth=1.5, label=f"Alert Limit ({ALERT_THRESHOLD:.2f} {param_unit})".strip())
-ax.axhline(DANGER_THRESHOLD, color="#d62728", linestyle="--", linewidth=1.5, label=f"Danger Limit ({DANGER_THRESHOLD:.2f} {param_unit})".strip())
+ax.axhline(ALERT_THRESHOLD, color="#ff7f0e", linestyle="--", linewidth=1.5, label=f"Alert Limit ({ALERT_THRESHOLD:.4f} {param_unit})".strip())
+ax.axhline(DANGER_THRESHOLD, color="#d62728", linestyle="--", linewidth=1.5, label=f"Danger Limit ({DANGER_THRESHOLD:.4f} {param_unit})".strip())
 
 ax.set_ylabel(y_label_text)
 ax.set_xlabel("Date")
@@ -301,8 +307,8 @@ fig_interactive.add_trace(go.Scatter(
     x=dates_plot, y=y_plot, mode='lines', name=f'Best Fit ({best_name})', line=dict(color='#d62728', width=2)
 ))
 
-fig_interactive.add_hline(y=ALERT_THRESHOLD, line_dash="dash", line_color="#ff7f0e", annotation_text=f"Alert ({ALERT_THRESHOLD:.2f} {param_unit})".strip(), annotation_position="bottom right")
-fig_interactive.add_hline(y=DANGER_THRESHOLD, line_dash="dash", line_color="#d62728", annotation_text=f"Danger ({DANGER_THRESHOLD:.2f} {param_unit})".strip(), annotation_position="bottom right")
+fig_interactive.add_hline(y=ALERT_THRESHOLD, line_dash="dash", line_color="#ff7f0e", annotation_text=f"Alert ({ALERT_THRESHOLD:.4f} {param_unit})".strip(), annotation_position="bottom right")
+fig_interactive.add_hline(y=DANGER_THRESHOLD, line_dash="dash", line_color="#d62728", annotation_text=f"Danger ({DANGER_THRESHOLD:.4f} {param_unit})".strip(), annotation_position="bottom right")
 
 fig_interactive.update_layout(
     title=dict(text=f"<b>{trend_title}</b>", x=0.5),
@@ -345,8 +351,8 @@ def generate_pdf_report(filename):
         [Paragraph("Equipment Name", body_style_l), Paragraph(equipment_name, body_style)],
         [Paragraph("Analysis Title / Parameter", body_style_l), Paragraph(analysis_title, body_style)],
         [Paragraph("Measurement Unit", body_style_l), Paragraph(param_unit if param_unit else "N/A", body_style)],
-        [Paragraph("Alert Threshold", body_style_l), Paragraph(f"{ALERT_THRESHOLD:.2f} {param_unit}".strip(), body_style)],
-        [Paragraph("Danger Threshold", body_style_l), Paragraph(f"{DANGER_THRESHOLD:.2f} {param_unit}".strip(), body_style)],
+        [Paragraph("Alert Threshold", body_style_l), Paragraph(f"{ALERT_THRESHOLD:.4f} {param_unit}".strip(), body_style)],
+        [Paragraph("Danger Threshold", body_style_l), Paragraph(f"{DANGER_THRESHOLD:.4f} {param_unit}".strip(), body_style)],
         [Paragraph("Confidence Level", body_style_l), Paragraph(f"{CONFIDENCE_PCT:.1f} %", body_style)]
     ]
     t_spec = Table(spec_data, colWidths=[300, 200])
