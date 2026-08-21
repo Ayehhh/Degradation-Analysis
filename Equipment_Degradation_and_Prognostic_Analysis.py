@@ -31,16 +31,39 @@ st.markdown("This application models physical asset degradation trends and uses 
 # ==========================================
 # 1. USER INPUTS & PARAMETERS (SIDEBAR)
 # ==========================================
-st.sidebar.header("1. Asset Information")
-complex_name = st.sidebar.text_input("Complex Name", value="Complex A")
-equipment_name = st.sidebar.text_input("Equipment Name", value="Pump-101")
-analysis_title = st.sidebar.text_input("Analysis Title / Parameter", value="Filter Fouling Trend")
-
 st.sidebar.header("2. Data Source")
 data_source = st.sidebar.selectbox(
     "Choose Analysis Mode:",
     ["Upload Excel File", "Copy & Paste Bulk Data", "Sample Data"]
 )
+
+# Manage Session State Defaults based on Data Source Selection
+if "prev_data_source" not in st.session_state:
+    st.session_state.prev_data_source = data_source
+
+# Trigger updates if user switches to or from Sample Data
+if data_source != st.session_state.prev_data_source:
+    st.session_state.prev_data_source = data_source
+    if data_source == "Sample Data":
+        st.session_state.param_unit = "bar"
+        st.session_state.trend_dir = "Progressive Upwards (High is Bad)"
+        st.session_state.alert_val = 0.500
+        st.session_state.danger_val = 0.800
+
+# Set initial default session states if not present
+if "param_unit" not in st.session_state:
+    st.session_state.param_unit = "bar"
+if "trend_dir" not in st.session_state:
+    st.session_state.trend_dir = "Progressive Upwards (High is Bad)"
+if "alert_val" not in st.session_state:
+    st.session_state.alert_val = 0.500 if data_source == "Sample Data" else 0.400
+if "danger_val" not in st.session_state:
+    st.session_state.danger_val = 0.800 if data_source == "Sample Data" else 0.500
+
+st.sidebar.header("1. Asset Information")
+complex_name = st.sidebar.text_input("Complex Name", value="Complex A")
+equipment_name = st.sidebar.text_input("Equipment Name", value="Pump-101")
+analysis_title = st.sidebar.text_input("Analysis Title / Parameter", value="Filter Fouling Trend")
 
 df = None
 
@@ -67,11 +90,17 @@ elif data_source == "Copy & Paste Bulk Data":
         st.stop()
 
 else:  # Sample Data Mode
-    st.sidebar.success("✅ Running with Synthetic Asset Degradation Data")
+    st.sidebar.success("✅ Running with Synthetic Asset Degradation Data (0.00 - 0.45 bar)")
     np.random.seed(42)
+    
+    # 20 points over 300 days progressing smoothly from ~0.10 bar up to ~0.43 bar
     dates = pd.date_range(end=datetime.now(), periods=20, freq='15D')
     days_passed = np.arange(20) * 15
-    synthetic_degradation = 5.0 + 0.08 * (days_passed ** 1.2) + np.random.normal(0, 1.2, 20)
+    
+    # Synthetic exponential curve scaled perfectly between 0.05 and 0.45 bar
+    base_progression = 0.10 + 0.00025 * (days_passed ** 1.35)
+    noise = np.random.normal(0, 0.008, 20)
+    synthetic_degradation = np.clip(base_progression + noise, 0.020, 0.445)
     
     df = pd.DataFrame({
         "timestamp": dates,
@@ -80,20 +109,17 @@ else:  # Sample Data Mode
 
 # Engineering Parameters Inputs
 st.sidebar.header("3. Engineering Parameters")
-param_unit = st.sidebar.text_input("Measurement Unit", value="bar")
+param_unit = st.sidebar.text_input("Measurement Unit", key="param_unit")
 
 trend_direction = st.sidebar.selectbox(
     "Degradation Trend Direction:",
-    ["Progressive Upwards (High is Bad)", "Progressive Downwards (High is Good)"]
+    ["Progressive Upwards (High is Bad)", "Progressive Downwards (High is Good)"],
+    key="trend_dir"
 )
 is_increasing = (trend_direction == "Progressive Upwards (High is Bad)")
 
-# Set default thresholds based on direction mode (Formatted to 3 decimal places)
-default_alert = 0.400 if is_increasing else 0.200
-default_danger = 0.500 if is_increasing else 0.100
-
-ALERT_THRESHOLD = st.sidebar.number_input(f"Alert Threshold [{param_unit}]", value=default_alert, step=0.001, format="%.3f")
-DANGER_THRESHOLD = st.sidebar.number_input(f"Danger Threshold [{param_unit}]", value=default_danger, step=0.001, format="%.3f")
+ALERT_THRESHOLD = st.sidebar.number_input(f"Alert Threshold [{param_unit}]", key="alert_val", step=0.001, format="%.3f")
+DANGER_THRESHOLD = st.sidebar.number_input(f"Danger Threshold [{param_unit}]", key="danger_val", step=0.001, format="%.3f")
 CONFIDENCE_PCT = st.sidebar.number_input("Confidence Level Analysis [%]", value=95.0, min_value=50.0, max_value=99.9, step=1.0)
 
 # Setup Output Directory
@@ -427,13 +453,13 @@ def generate_pdf_report(filename):
     styles = getSampleStyleSheet()
     story = []
 
-    # TEMA WARNA BAHARU (Steel Blue & Slate)
-    PRIMARY_COLOR = colors.HexColor('#00AE9E')    
-    SECONDARY_COLOR = colors.HexColor('#00509E')  
+    # TEMA WARNA BAHARU (Modern Steel Blue & Slate)
+    PRIMARY_COLOR = colors.HexColor('#1E3A8A')    # Dark Navy Blue untuk Tajuk & Table Header
+    SECONDARY_COLOR = colors.HexColor('#2563EB')  # Royal Blue untuk Section Banner
     ALT_ROW_COLOR = colors.HexColor('#F8FAFC')     # Light Gray Background
     BORDER_COLOR = colors.HexColor('#CBD5E1')      # Slate Border
 
-    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=13, textColor = colors.HexColor('#00509E'), alignment=1, spaceAfter=12)
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=13, textColor=PRIMARY_COLOR, alignment=1, spaceAfter=12)
     section_style = ParagraphStyle('SectionStyle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=10, textColor=colors.HexColor('#FFFFFF'), backColor=SECONDARY_COLOR, spaceBefore=10, spaceAfter=6, leftIndent=6)
 
     hdr_style = ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=colors.whitesmoke, alignment=1)
