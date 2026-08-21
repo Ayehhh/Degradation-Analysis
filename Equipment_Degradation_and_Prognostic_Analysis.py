@@ -433,7 +433,7 @@ def generate_pdf_report(filename):
     ALT_ROW_COLOR = colors.HexColor('#F8FAFC')     # Light Gray Background
     BORDER_COLOR = colors.HexColor('#CBD5E1')      # Slate Border
 
-    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=13, textColor=PRIMARY_COLOR, alignment=1, spaceAfter=12)
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=13, textColor = colors.HexColor('#00509E'), alignment=1, spaceAfter=12)
     section_style = ParagraphStyle('SectionStyle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=10, textColor=colors.HexColor('#FFFFFF'), backColor=SECONDARY_COLOR, spaceBefore=10, spaceAfter=6, leftIndent=6)
 
     hdr_style = ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=colors.whitesmoke, alignment=1)
