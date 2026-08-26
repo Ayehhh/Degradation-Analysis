@@ -31,7 +31,7 @@ st.markdown("This application models physical asset degradation trends and uses 
 # ==========================================
 # 1. USER INPUTS & PARAMETERS (SIDEBAR)
 # ==========================================
-st.sidebar.header("2. Data Source")
+st.sidebar.header("1. Data Source")
 data_source = st.sidebar.selectbox(
     "Choose Analysis Mode:",
     ["Upload Excel File", "Copy & Paste Bulk Data", "Sample Data"]
@@ -60,7 +60,7 @@ if "alert_val" not in st.session_state:
 if "danger_val" not in st.session_state:
     st.session_state.danger_val = 0.800 if data_source == "Sample Data" else 0.500
 
-st.sidebar.header("1. Asset Information")
+st.sidebar.header("2. Asset Information")
 complex_name = st.sidebar.text_input("Complex Name", value="Complex A")
 equipment_name = st.sidebar.text_input("Equipment Name", value="Pump-101")
 analysis_title = st.sidebar.text_input("Analysis Title / Parameter", value="Filter Fouling Trend")
@@ -454,8 +454,8 @@ def generate_pdf_report(filename):
     story = []
 
     # TEMA WARNA BAHARU (Modern Steel Blue & Slate)
-    PRIMARY_COLOR = colors.HexColor('#1E3A8A')    # Dark Navy Blue untuk Tajuk & Table Header
-    SECONDARY_COLOR = colors.HexColor('#2563EB')  # Royal Blue untuk Section Banner
+    PRIMARY_COLOR = colors.HexColor('#1B365D')    # untuk Tajuk & Table Header
+    SECONDARY_COLOR = colors.HexColor('#4A777A')  # untuk Section Banner
     ALT_ROW_COLOR = colors.HexColor('#F8FAFC')     # Light Gray Background
     BORDER_COLOR = colors.HexColor('#CBD5E1')      # Slate Border
 
