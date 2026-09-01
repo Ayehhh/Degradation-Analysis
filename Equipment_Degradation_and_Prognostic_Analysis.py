@@ -340,7 +340,7 @@ for label, threshold_val, (e, c, l) in targets_info:
 
     prognosis_data.append({
         "Threshold Level": label,
-        "Threshold Value": f"{threshold_val:.3f} {param_unit}".strip(),
+        "Threshold Value": f"{threshold_val:.3g} {param_unit}".strip(),
         "Earliest Date": e_date,
         "Expected Date": c_date,
         "Latest Date": l_date,
