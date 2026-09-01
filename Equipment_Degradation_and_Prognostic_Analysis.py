@@ -274,7 +274,7 @@ with st.expander("💡 Technical Guidance: Metrics, RUL & Model Selection Guide"
     | **Power Law** | Wear rate accelerates as a power-law function (fatigue accumulation). | Crack propagation from metal fatigue (Paris Law). |
     | **CDF Models (Weibull / Log-Normal / Log-Logistic)** | Used when degradation approaches a physical saturation limit forming an 'S-curve'. | Catalyst deactivation, chemical oil degradation / oxidation aging. |
 
-   # > 💡 **Engineering Note:** If an **Exponential** model yields $R^2 = 0.94$ while a **Quadratic** model yields $R^2 = 0.95$, prefer **Exponential** for critical mechanical failures (such as Rider Ring / Rod Drop wear) as it provides a safer, more conservative estimate for the threshold breach date.
+   // > 💡 **Engineering Note:** If an **Exponential** model yields $R^2 = 0.94$ while a **Quadratic** model yields $R^2 = 0.95$, prefer **Exponential** for critical mechanical failures (such as Rider Ring / Rod Drop wear) as it provides a safer, more conservative estimate for the threshold breach date.
     """)
 
 model_comparison_data = []
