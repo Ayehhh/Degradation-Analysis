@@ -63,7 +63,7 @@ if "danger_val" not in st.session_state:
 st.sidebar.header("2. Asset Information")
 complex_name = st.sidebar.text_input("Complex Name", value="Complex A")
 equipment_name = st.sidebar.text_input("Equipment Name", value="Pump-101")
-analysis_title = st.sidebar.text_input("Analysis Title / Parameter", value="Filter Fouling Trend")
+analysis_title = st.sidebar.text_input("Analysis Title / Parameter", value="Vibration Trending")
 
 df = None
 
@@ -263,7 +263,7 @@ with st.expander("💡 Technical Guidance: Metrics, RUL & Model Selection Guide"
     ---
 
     ### 2. Model Selection Recommendation (Physical & Statistical Basis)
-    Model selection should not rely solely on highest $R^2$ scores. Use this physics-of-failure guidance to choose the most appropriate model for your asset:
+    Model selection should not rely solely on highest $R^2$ scores. Use this example physics-of-failure guidance to choose the most appropriate model for your asset:
 
     | Regression Model | Physical Behavior / Failure Mechanism | Example |
     | :--- | :--- | :--- |
