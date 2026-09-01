@@ -61,8 +61,8 @@ if "danger_val" not in st.session_state:
     st.session_state.danger_val = 0.800 if data_source == "Sample Data" else 0.500
 
 st.sidebar.header("2. Asset Information")
-complex_name = st.sidebar.text_input("Complex Name", value="Complex A")
-equipment_name = st.sidebar.text_input("Equipment Name", value="Pump-101")
+complex_name = st.sidebar.text_input("Complex Name", value="ABC Complex")
+equipment_name = st.sidebar.text_input("Equipment Name", value="P1234")
 analysis_title = st.sidebar.text_input("Analysis Title / Parameter", value="Vibration Trending")
 
 df = None
