@@ -265,16 +265,16 @@ with st.expander("💡 Technical Guidance: Metrics, RUL & Model Selection Guide"
     ### 2. Model Selection Recommendation (Physical & Statistical Basis)
     Model selection should not rely solely on highest $R^2$ scores. Use this physics-of-failure guidance to choose the most appropriate model for your asset:
 
-    | Regression Model | Physical Behavior / Failure Mechanism | Best Suited Component / Parameter |
+    | Regression Model | Physical Behavior / Failure Mechanism | Example |
     | :--- | :--- | :--- |
     | **Linear** | Constant wear rate without acceleration. Typical for early lifecycle or steady mechanical wear. | Structural thickness, steady mechanical sliding wear (linear wear rate). |
     | **Quadratic** | Degradation starts slow and progressively accelerates over time (accelerated wear/fouling). | Filter fouling ($\Delta P$), intermediate bearing wear progression. |
-    | **Exponential** | Rapidly accelerating degradation (*runaway degradation*). As damaged components degrade, the wear rate increases exponentially. | **Rod Drop / Rider Ring wear**, severe vibration growth, electrical insulation breakdown. |
+    | **Exponential** | Rapidly accelerating degradation (*runaway degradation*). As damaged components degrade, the wear rate increases exponentially. | Rod Drop / Rider Ring wear, severe vibration growth, electrical insulation breakdown. |
     | **Logarithmic** | High initial degradation rate that stabilizes over time (self-limiting process). | Initial component run-in / burn-in processes, early deposit buildup on heat exchanger tubes. |
     | **Power Law** | Wear rate accelerates as a power-law function (fatigue accumulation). | Crack propagation from metal fatigue (Paris Law). |
     | **CDF Models (Weibull / Log-Normal / Log-Logistic)** | Used when degradation approaches a physical saturation limit forming an 'S-curve'. | Catalyst deactivation, chemical oil degradation / oxidation aging. |
 
-    > 💡 **Engineering Note:** If an **Exponential** model yields $R^2 = 0.94$ while a **Quadratic** model yields $R^2 = 0.95$, prefer **Exponential** for critical mechanical failures (such as Rider Ring / Rod Drop wear) as it provides a safer, more conservative estimate for the threshold breach date.
+   # > 💡 **Engineering Note:** If an **Exponential** model yields $R^2 = 0.94$ while a **Quadratic** model yields $R^2 = 0.95$, prefer **Exponential** for critical mechanical failures (such as Rider Ring / Rod Drop wear) as it provides a safer, more conservative estimate for the threshold breach date.
     """)
 
 model_comparison_data = []
