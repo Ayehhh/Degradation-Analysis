@@ -149,7 +149,7 @@ degradation_val = df["value"].values
 latest_val = df["value"].iloc[-1]
 
 # ==========================================
-# 3. REGRESSION MODELING SUITE (DIRECTION-AWARE)
+# 3. REGRESSION MODELING SUITE (FULL 8 MODELS)
 # ==========================================
 def _lin(x, a, b): return a * x + b
 def _quad(x, a, b, c): return a * x**2 + b * x + c
@@ -162,30 +162,31 @@ def _loglogis(x, a, alpha, beta): return a * (1.0 / (1.0 + (np.maximum(x, 1e-6) 
 
 max_v = max(np.max(degradation_val) * 2.5, 100.0)
 mean_d = max(np.mean(days), 1.0)
+mean_v = np.mean(degradation_val)
 
 if is_increasing:
     lin_bounds = ([0, -np.inf], [np.inf, np.inf])
     quad_bounds = ([0, 0, -np.inf], [np.inf, np.inf, np.inf])
     expo_bounds = ([0, 0], [np.inf, np.inf])
     log_bounds = ([0, -np.inf], [np.inf, np.inf])
+    power_bounds = ([0, 0], [np.inf, np.inf])
 else:
     lin_bounds = ([-np.inf, -np.inf], [0, np.inf])
     quad_bounds = ([-np.inf, -np.inf, -np.inf], [0, 0, np.inf])
     expo_bounds = ([0, -np.inf], [np.inf, 0])
     log_bounds = ([-np.inf, -np.inf], [0, np.inf])
+    power_bounds = ([-np.inf, -np.inf], [0, np.inf])
 
 MODELS = {
-    "Linear": (_lin, [0.001 if is_increasing else -0.001, np.mean(degradation_val)], lin_bounds),
-    "Quadratic": (_quad, [0.0001 if is_increasing else -0.0001, 0.001 if is_increasing else -0.001, np.mean(degradation_val)], quad_bounds),
-    "Exponential": (_expo, [np.mean(degradation_val), 0.001 if is_increasing else -0.001], expo_bounds),
-    "Logarithmic": (_logf, [0.01 if is_increasing else -0.01, np.mean(degradation_val)], log_bounds),
+    "Linear": (_lin, [0.001 if is_increasing else -0.001, mean_v], lin_bounds),
+    "Quadratic": (_quad, [0.0001 if is_increasing else -0.0001, 0.001 if is_increasing else -0.001, mean_v], quad_bounds),
+    "Exponential": (_expo, [mean_v, 0.001 if is_increasing else -0.001], expo_bounds),
+    "Logarithmic": (_logf, [0.01 if is_increasing else -0.01, mean_v], log_bounds),
+    "Power Law": (_power, [0.1 if is_increasing else -0.1, 1.2], power_bounds),
+    "Log-Normal CDF": (_lognorm, [max_v, 1.0, mean_d], ([0, 0.01, 0.1], [max_v * 5, 10.0, 50000])),
+    "Weibull CDF": (_weibull, [max_v, 1.5, mean_d], ([0, 0.1, 0.1], [max_v * 5, 10.0, 50000])),
+    "Log-Logistic CDF": (_loglogis, [max_v, mean_d, 1.5], ([0, 0.1, 0.1], [max_v * 5, 50000, 10.0]))
 }
-
-if is_increasing:
-    MODELS["Power Law"] = (_power, [0.1, 1.2], (0, np.inf))
-    MODELS["Log-Normal CDF"] = (_lognorm, [max_v, 1.0, mean_d], ([0, 0.01, 0.1], [max_v * 5, 10.0, 50000]))
-    MODELS["Weibull CDF"] = (_weibull, [max_v, 1.5, mean_d], ([0, 0.1, 0.1], [max_v * 5, 10.0, 50000]))
-    MODELS["Log-Logistic CDF"] = (_loglogis, [max_v, mean_d, 1.5], ([0, 0.1, 0.1], [max_v * 5, 50000, 10.0]))
 
 model_results = {}
 for name, (func, p0, bnds) in MODELS.items():
