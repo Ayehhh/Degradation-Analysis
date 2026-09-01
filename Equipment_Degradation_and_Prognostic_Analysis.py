@@ -149,43 +149,66 @@ degradation_val = df["value"].values
 latest_val = df["value"].iloc[-1]
 
 # ==========================================
-# 3. REGRESSION MODELING SUITE (FULL 8 MODELS)
+# 3. REGRESSION MODELING SUITE (FIXED FOR NEGATIVE DATA)
 # ==========================================
 def _lin(x, a, b): return a * x + b
 def _quad(x, a, b, c): return a * x**2 + b * x + c
 def _power(x, a, b): return a * np.power(np.maximum(x, 1e-6), b)
-def _expo(x, a, b): return a * np.exp(np.clip(b * x, -100, 100))
+def _expo(x, a, b): return a * np.exp(np.clip(b * x, -50, 50))
 def _logf(x, a, b): return a * np.log(x + 1.0) + b
-def _lognorm(x, a, shape, scale): return a * stats.lognorm.cdf(np.maximum(x, 1e-6), s=shape, scale=scale)
-def _weibull(x, a, beta, eta): return a * (1.0 - np.exp(-1.0 * (np.maximum(x, 1e-6) / eta)**beta))
-def _loglogis(x, a, alpha, beta): return a * (1.0 / (1.0 + (np.maximum(x, 1e-6) / alpha)**(-beta)))
 
-max_v = max(np.max(degradation_val) * 2.5, 100.0)
+# Handling negative values gracefully for CDF functions
+def _lognorm(x, a, shape, scale, shift=0): 
+    return a * stats.lognorm.cdf(np.maximum(x, 1e-6), s=shape, scale=scale) + shift
+def _weibull(x, a, beta, eta, shift=0): 
+    return a * (1.0 - np.exp(-1.0 * (np.maximum(x, 1e-6) / eta)**beta)) + shift
+def _loglogis(x, a, alpha, beta, shift=0): 
+    return a * (1.0 / (1.0 + (np.maximum(x, 1e-6) / alpha)**(-beta))) + shift
+
 mean_d = max(np.mean(days), 1.0)
 mean_v = np.mean(degradation_val)
+is_negative = mean_v < 0
 
+# Adjust dynamic bounds depending on trend direction and data sign (Positive vs Negative)
 if is_increasing:
     lin_bounds = ([0, -np.inf], [np.inf, np.inf])
     quad_bounds = ([0, 0, -np.inf], [np.inf, np.inf, np.inf])
-    expo_bounds = ([0, 0], [np.inf, np.inf])
+    expo_bounds = ([0, 0], [np.inf, np.inf]) if not is_negative else ([-np.inf, 0], [0, np.inf])
     log_bounds = ([0, -np.inf], [np.inf, np.inf])
-    power_bounds = ([0, 0], [np.inf, np.inf])
+    power_bounds = ([0, 0], [np.inf, np.inf]) if not is_negative else ([-np.inf, 0], [0, np.inf])
 else:
     lin_bounds = ([-np.inf, -np.inf], [0, np.inf])
     quad_bounds = ([-np.inf, -np.inf, -np.inf], [0, 0, np.inf])
-    expo_bounds = ([0, -np.inf], [np.inf, 0])
+    expo_bounds = ([0, -np.inf], [np.inf, 0]) if not is_negative else ([-np.inf, 0], [0, np.inf])
     log_bounds = ([-np.inf, -np.inf], [0, np.inf])
-    power_bounds = ([-np.inf, -np.inf], [0, np.inf])
+    power_bounds = ([-np.inf, -np.inf], [0, np.inf]) if not is_negative else ([-np.inf, -np.inf], [0, 0])
+
+# Dynamic initial guess generation for Exponential model using absolute log transforms
+try:
+    y_pos = np.maximum(np.abs(degradation_val), 1e-6)
+    poly = np.polyfit(days, np.log(y_pos), 1)
+    b_init = poly[0]
+    a_init = np.exp(poly[1])
+    if is_negative:
+        a_init = -a_init
+    expo_p0 = [a_init, b_init]
+except Exception:
+    expo_p0 = [mean_v, 0.0001 if is_increasing else -0.0001]
+
+max_v_abs = max(np.max(np.abs(degradation_val)) * 2.5, 100.0)
 
 MODELS = {
     "Linear": (_lin, [0.001 if is_increasing else -0.001, mean_v], lin_bounds),
     "Quadratic": (_quad, [0.0001 if is_increasing else -0.0001, 0.001 if is_increasing else -0.001, mean_v], quad_bounds),
-    "Exponential": (_expo, [mean_v, 0.001 if is_increasing else -0.001], expo_bounds),
+    "Exponential": (_expo, expo_p0, expo_bounds),
     "Logarithmic": (_logf, [0.01 if is_increasing else -0.01, mean_v], log_bounds),
-    "Power Law": (_power, [0.1 if is_increasing else -0.1, 1.2], power_bounds),
-    "Log-Normal CDF": (_lognorm, [max_v, 1.0, mean_d], ([0, 0.01, 0.1], [max_v * 5, 10.0, 50000])),
-    "Weibull CDF": (_weibull, [max_v, 1.5, mean_d], ([0, 0.1, 0.1], [max_v * 5, 10.0, 50000])),
-    "Log-Logistic CDF": (_loglogis, [max_v, mean_d, 1.5], ([0, 0.1, 0.1], [max_v * 5, 50000, 10.0]))
+    "Power Law": (_power, [a_init if 'a_init' in locals() else mean_v, 1.0], power_bounds),
+    "Log-Normal CDF": (lambda x, a, s, sc: _lognorm(x, a, s, sc, shift=mean_v if is_negative else 0), 
+                       [max_v_abs, 1.0, mean_d], ([0, 0.01, 0.1], [max_v_abs * 5, 10.0, 50000])),
+    "Weibull CDF": (lambda x, a, b, e: _weibull(x, a, b, e, shift=mean_v if is_negative else 0), 
+                    [max_v_abs, 1.5, mean_d], ([0, 0.1, 0.1], [max_v_abs * 5, 10.0, 50000])),
+    "Log-Logistic CDF": (lambda x, a, al, be: _loglogis(x, a, al, be, shift=mean_v if is_negative else 0), 
+                         [max_v_abs, mean_d, 1.5], ([0, 0.1, 0.1], [max_v_abs * 5, 50000, 10.0]))
 }
 
 model_results = {}
@@ -227,14 +250,31 @@ best = model_results[best_name]
 # ==========================================
 st.subheader("📊 Model Comparison & Fit Metrics")
 
-with st.expander("💡 Technical Guidance: Metrics & RUL Definition"):
+with st.expander("💡 Technical Guidance: Metrics, RUL & Model Selection Guide"):
     st.markdown("""
-    * **Remaining Useful Life (RUL):** The calculated operational time remaining before degradation reaches or passes an Alert or Danger limit.
+    ### 1. Key Definitions & Metrics
+    * **Remaining Useful Life (RUL):** The calculated operational time remaining before degradation reaches or passes an **Alert** or **Danger** threshold.
       $$\\text{RUL (Days)} = \\text{Expected Breach Date} - \\text{Last Observed Data Date}$$
     * **Degradation Direction Mode:** 
-      * **Progressive Upwards:** Values increase toward limits (e.g., Vibration, Temperature, Fouling Delta-P).
-      * **Progressive Downwards:** Values decrease toward limits (e.g., Component Thickness, Pressure, Flow Rate).
+      * **Progressive Upwards:** Values increase toward threshold limits (e.g., Rider Ring Wear / Rod Drop, Vibration, Temperature, Differential Pressure).
+      * **Progressive Downwards:** Values decrease toward threshold limits (e.g., Pipe Wall Thickness, Piston Ring Thickness, Flow Rate).
     * **$R^2$ Score (Coefficient of Determination):** Measures goodness-of-fit ($1.0$ indicates a perfect mathematical fit).
+
+    ---
+
+    ### 2. Model Selection Recommendation (Physical & Statistical Basis)
+    Model selection should not rely solely on highest $R^2$ scores. Use this physics-of-failure guidance to choose the most appropriate model for your asset:
+
+    | Regression Model | Physical Behavior / Failure Mechanism | Best Suited Component / Parameter |
+    | :--- | :--- | :--- |
+    | **Linear** | Constant wear rate without acceleration. Typical for early lifecycle or steady mechanical wear. | Structural thickness, steady mechanical sliding wear (linear wear rate). |
+    | **Quadratic** | Degradation starts slow and progressively accelerates over time (accelerated wear/fouling). | Filter fouling ($\Delta P$), intermediate bearing wear progression. |
+    | **Exponential** | Rapidly accelerating degradation (*runaway degradation*). As damaged components degrade, the wear rate increases exponentially. | **Rod Drop / Rider Ring wear**, severe vibration growth, electrical insulation breakdown. |
+    | **Logarithmic** | High initial degradation rate that stabilizes over time (self-limiting process). | Initial component run-in / burn-in processes, early deposit buildup on heat exchanger tubes. |
+    | **Power Law** | Wear rate accelerates as a power-law function (fatigue accumulation). | Crack propagation from metal fatigue (Paris Law). |
+    | **CDF Models (Weibull / Log-Normal / Log-Logistic)** | Used when degradation approaches a physical saturation limit forming an 'S-curve'. | Catalyst deactivation, chemical oil degradation / oxidation aging. |
+
+    > 💡 **Engineering Note:** If an **Exponential** model yields $R^2 = 0.94$ while a **Quadratic** model yields $R^2 = 0.95$, prefer **Exponential** for critical mechanical failures (such as Rider Ring / Rod Drop wear) as it provides a safer, more conservative estimate for the threshold breach date.
     """)
 
 model_comparison_data = []
@@ -333,7 +373,6 @@ ax.fill_between(dates_plot, y_plot - band_val, y_plot + band_val, color="#d62728
 ax.axhline(ALERT_THRESHOLD, color="#ff7f0e", linestyle="--", linewidth=1.5, label=f"Alert Limit ({ALERT_THRESHOLD:.3f} {param_unit})".strip())
 ax.axhline(DANGER_THRESHOLD, color="#d62728", linestyle="--", linewidth=1.5, label=f"Danger Limit ({DANGER_THRESHOLD:.3f} {param_unit})".strip())
 
-# Add Callout Annotations to Static Plot (Matplotlib)
 callout_points_mpl = [
     ("Alert", f_Alert[1], ALERT_THRESHOLD, "#ff7f0e", (15, 20) if is_increasing else (15, -25)),
     ("Danger", f_Danger[1], DANGER_THRESHOLD, "#d62728", (-100, 25) if is_increasing else (-100, -30))
@@ -345,10 +384,8 @@ for label, day_val, threshold_val, color_hex, text_offset in callout_points_mpl:
         date_str = breach_dt.strftime('%d %b %Y')
         rul_val = int(day_val - latest_day)
         
-        # Diamond marker at point of reach
         ax.scatter([breach_dt], [threshold_val], color=color_hex, s=60, marker='D', zorder=5, edgecolor='white')
         
-        # Text Callout Box
         ax.annotate(
             f"Expected {label}:\n{date_str} ({rul_val}d RUL)",
             xy=(breach_dt, threshold_val),
@@ -376,28 +413,23 @@ plt.close(fig_static)
 # --- INTERACTIVE GRAPH (PLOTLY) WITH BREACH CALLOUTS ---
 fig_interactive = go.Figure()
 
-# Measured Data Points
 fig_interactive.add_trace(go.Scatter(
     x=df["timestamp"], y=df["value"], mode='markers', name='Measured Data', marker=dict(color='#1f77b4', size=8)
 ))
 
-# Confidence Interval Lower Bound
 fig_interactive.add_trace(go.Scatter(
     x=dates_plot, y=y_plot - band_val, mode='lines', line=dict(color='rgba(255,255,255,0)'), showlegend=False, hoverinfo="skip"
 ))
 
-# Confidence Interval Upper Bound Fill
 fig_interactive.add_trace(go.Scatter(
     x=dates_plot, y=y_plot + band_val, mode='lines', fill='tonexty', fillcolor='rgba(214, 39, 40, 0.15)',
     line=dict(color='rgba(255,255,255,0)'), name=f"{CONFIDENCE_PCT:.0f}% Confidence Interval", hoverinfo="skip"
 ))
 
-# Best Fit Curve
 fig_interactive.add_trace(go.Scatter(
     x=dates_plot, y=y_plot, mode='lines', name=f'Model Fit ({best_name})', line=dict(color='#d62728', width=2)
 ))
 
-# Threshold Lines
 fig_interactive.add_hline(
     y=ALERT_THRESHOLD, line_dash="dash", line_color="#ff7f0e", 
     annotation_text=f"Alert ({ALERT_THRESHOLD:.3f} {param_unit})".strip(), annotation_position="bottom right"
@@ -407,7 +439,6 @@ fig_interactive.add_hline(
     annotation_text=f"Danger ({DANGER_THRESHOLD:.3f} {param_unit})".strip(), annotation_position="bottom right"
 )
 
-# Callout Markers & Annotations for Expected Breach Dates
 callout_points_plotly = [
     ("Alert", f_Alert[1], ALERT_THRESHOLD, "#ff7f0e", "bottom center" if is_increasing else "top center"),
     ("Danger", f_Danger[1], DANGER_THRESHOLD, "#d62728", "top center" if is_increasing else "bottom center")
@@ -419,7 +450,6 @@ for label, day_val, threshold_val, color_hex, text_pos in callout_points_plotly:
         date_str = breach_dt.strftime('%d %b %Y')
         rul_val = int(day_val - latest_day)
         
-        # Add a prominent marker at the intersection point
         fig_interactive.add_trace(go.Scatter(
             x=[breach_dt],
             y=[threshold_val],
@@ -454,11 +484,10 @@ def generate_pdf_report(filename):
     styles = getSampleStyleSheet()
     story = []
 
-    # TEMA WARNA BAHARU (Modern Steel Blue & Slate)
-    PRIMARY_COLOR = colors.HexColor('#1B365D')    # untuk Tajuk & Table Header
-    SECONDARY_COLOR = colors.HexColor('#4A777A')  # untuk Section Banner
-    ALT_ROW_COLOR = colors.HexColor('#F8FAFC')     # Light Gray Background
-    BORDER_COLOR = colors.HexColor('#CBD5E1')      # Slate Border
+    PRIMARY_COLOR = colors.HexColor('#1B365D')
+    SECONDARY_COLOR = colors.HexColor('#4A777A')
+    ALT_ROW_COLOR = colors.HexColor('#F8FAFC')
+    BORDER_COLOR = colors.HexColor('#CBD5E1')
 
     title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=13, textColor=PRIMARY_COLOR, alignment=1, spaceAfter=12)
     section_style = ParagraphStyle('SectionStyle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=10, textColor=colors.HexColor('#FFFFFF'), backColor=SECONDARY_COLOR, spaceBefore=10, spaceAfter=6, leftIndent=6)
@@ -471,7 +500,6 @@ def generate_pdf_report(filename):
     story.append(Paragraph(f"DEGRADATION AND PROGNOSTIC ANALYSIS REPORT<br/>{complex_name.upper()} - {equipment_name.upper()}", title_style))
     story.append(Spacer(1, 6))
 
-    # SECTION 1: SPECIFICATIONS
     story.append(Paragraph("TECHNICAL SPECIFICATIONS & THRESHOLDS", section_style))
     spec_data = [
         [Paragraph("Parameter", hdr_style_l), Paragraph("Value", hdr_style)],
@@ -496,7 +524,6 @@ def generate_pdf_report(filename):
     story.append(t_spec)
     story.append(Spacer(1, 8))
 
-    # SECTION 2: MODEL COMPARISON
     story.append(Paragraph("MODEL COMPARISON & FIT METRICS", section_style))
     comp_headers = [Paragraph("Model Name", hdr_style_l), Paragraph("R² Score", hdr_style), Paragraph("Residual Std", hdr_style), Paragraph("Status", hdr_style)]
     comp_table_data = [comp_headers]
@@ -520,7 +547,6 @@ def generate_pdf_report(filename):
     story.append(t_comp)
     story.append(Spacer(1, 8))
 
-    # SECTION 3: PROGNOSTIC SUMMARY
     story.append(Paragraph("PROGNOSTIC BREACH PROJECTION SUMMARY", section_style))
     prog_headers = [
         Paragraph("Threshold Level", hdr_style_l), Paragraph("Threshold Value", hdr_style),
@@ -547,7 +573,6 @@ def generate_pdf_report(filename):
 
     story.append(PageBreak())
 
-    # SECTION 4: TREND CHART
     story.append(Paragraph("PROGNOSTIC TREND VISUALISATION", section_style))
     story.append(Spacer(1, 10))
     story.append(RLImage(plot_img_path, width=500, height=250))
