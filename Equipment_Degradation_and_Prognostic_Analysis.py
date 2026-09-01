@@ -47,7 +47,7 @@ if data_source != st.session_state.prev_data_source:
     if data_source == "Sample Data":
         st.session_state.param_unit = "bar"
         st.session_state.trend_dir = "Progressive Upwards (High is Bad)"
-        st.session_state.alert_val = 0.500
+        st.session_state._val = 0.500
         st.session_state.danger_val = 0.800
 
 # Set initial default session states if not present
@@ -55,8 +55,8 @@ if "param_unit" not in st.session_state:
     st.session_state.param_unit = "bar"
 if "trend_dir" not in st.session_state:
     st.session_state.trend_dir = "Progressive Upwards (High is Bad)"
-if "alert_val" not in st.session_state:
-    st.session_state.alert_val = 0.500 if data_source == "Sample Data" else 0.400
+if "_val" not in st.session_state:
+    st.session_state._val = 0.500 if data_source == "Sample Data" else 0.400
 if "danger_val" not in st.session_state:
     st.session_state.danger_val = 0.800 if data_source == "Sample Data" else 0.500
 
@@ -118,8 +118,8 @@ trend_direction = st.sidebar.selectbox(
 )
 is_increasing = (trend_direction == "Progressive Upwards (High is Bad)")
 
-ALERT_THRESHOLD = st.sidebar.number_input(f"Alert Threshold [{param_unit}]", key="alert_val", step=0.001, format="%.3f")
-DANGER_THRESHOLD = st.sidebar.number_input(f"Danger Threshold [{param_unit}]", key="danger_val", step=0.001, format="%.3f")
+ALERT_THRESHOLD = st.sidebar.number_input(f"Alert Threshold [{param_unit}]", key="alert_val", step=0.001, format="%.3g")
+DANGER_THRESHOLD = st.sidebar.number_input(f"Danger Threshold [{param_unit}]", key="danger_val", step=0.001, format="%.3g")
 CONFIDENCE_PCT = st.sidebar.number_input("Confidence Level Analysis [%]", value=95.0, min_value=50.0, max_value=99.9, step=1.0)
 
 # Setup Output Directory
