@@ -508,8 +508,8 @@ def generate_pdf_report(filename):
         [Paragraph("Analysis Title / Parameter", body_style_l), Paragraph(analysis_title, body_style)],
         [Paragraph("Degradation Mode", body_style_l), Paragraph(trend_direction, body_style)],
         [Paragraph("Measurement Unit", body_style_l), Paragraph(param_unit if param_unit else "N/A", body_style)],
-        [Paragraph("Alert Threshold", body_style_l), Paragraph(f"{ALERT_THRESHOLD:.3f} {param_unit}".strip(), body_style)],
-        [Paragraph("Danger Threshold", body_style_l), Paragraph(f"{DANGER_THRESHOLD:.3f} {param_unit}".strip(), body_style)],
+        [Paragraph("Alert Threshold", body_style_l), Paragraph(f"{ALERT_THRESHOLD:.3g} {param_unit}".strip(), body_style)],
+        [Paragraph("Danger Threshold", body_style_l), Paragraph(f"{DANGER_THRESHOLD:.3g} {param_unit}".strip(), body_style)],
         [Paragraph("Confidence Level", body_style_l), Paragraph(f"{CONFIDENCE_PCT:.1f} %", body_style)]
     ]
     t_spec = Table(spec_data, colWidths=[300, 200])
