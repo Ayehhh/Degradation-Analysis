@@ -281,7 +281,7 @@ model_comparison_data = []
 for name, res in model_results.items():
     model_comparison_data.append({
         "Model Name": name,
-        "R² Score": f"{res['r2']* 100:.2f}%",
+        "R² Score (%)": f"{res['r2']* 100:.2f}%",
         "Residual Std": f"{res['resid_std']:.3f} {param_unit}".strip(),
         "Status": "✅ Selected" if name == best_name else ("Best Fit" if name == auto_best else "Candidate")
     })
@@ -530,7 +530,7 @@ def generate_pdf_report(filename):
     for row in model_comparison_data:
         comp_table_data.append([
             Paragraph(row["Model Name"], body_style_l),
-            Paragraph(row["R² Score"], body_style),
+            Paragraph(row["R² Score (%)"], body_style),
             Paragraph(row["Residual Std"], body_style),
             Paragraph(row["Status"], body_style)
         ])
