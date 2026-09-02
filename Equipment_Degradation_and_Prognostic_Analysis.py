@@ -258,7 +258,7 @@ with st.expander("💡 Technical Guidance: Metrics, RUL & Model Selection Guide"
     * **Degradation Direction Mode:** 
       * **Progressive Upwards:** Values increase toward threshold limits (e.g., Rider Ring Wear / Rod Drop, Vibration, Temperature, Differential Pressure).
       * **Progressive Downwards:** Values decrease toward threshold limits (e.g., Pipe Wall Thickness, Piston Ring Thickness, Flow Rate).
-    * **$R^2$ Score (Coefficient of Determination):** Measures goodness-of-fit ($1.0$ indicates a perfect mathematical fit).
+    * **$R^2$ Score (Coefficient of Determination):** Measures goodness-of-fit ($100\%$ indicates a perfect mathematical fit).
 
     ---
 
@@ -281,7 +281,7 @@ model_comparison_data = []
 for name, res in model_results.items():
     model_comparison_data.append({
         "Model Name": name,
-        "R² Score": f"{res['r2']:.3f}",
+        "R² Score": f"{res['r2']:*100:.2f}%",
         "Residual Std": f"{res['resid_std']:.3f} {param_unit}".strip(),
         "Status": "✅ Selected" if name == best_name else ("Best Fit" if name == auto_best else "Candidate")
     })
@@ -291,7 +291,7 @@ st.dataframe(pd.DataFrame(model_comparison_data), use_container_width=True)
 # 5. METRICS & PROGNOSTIC BREACH SUMMARY
 # ==========================================
 m1, m2, m3 = st.columns(3)
-m1.metric("Selected Model", f"{best_name}", f"R² = {best['r2']:.4f}")
+m1.metric("Selected Model", f"{best_name}", f"R² = {best['r2'] *100.2f}%")
 m2.metric("Current Data Value", f"{latest_val:.3f} {param_unit}".strip())
 m3.metric("Direction Mode", "Upwards ⬆️" if is_increasing else "Downwards ⬇️")
 
