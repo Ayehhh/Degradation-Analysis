@@ -45,20 +45,20 @@ if "prev_data_source" not in st.session_state:
 if data_source != st.session_state.prev_data_source:
     st.session_state.prev_data_source = data_source
     if data_source == "Sample Data":
-        st.session_state.param_unit = "mm/s"
+        st.session_state.param_unit = "bar"
         st.session_state.trend_dir = "Progressive Upwards (High is Bad)"
-        st.session_state._val = 0.500
-        st.session_state.danger_val = 0.800
+        st.session_state.alert_val = 2.800
+        st.session_state.danger_val = 4.500
 
 # Set initial default session states if not present
 if "param_unit" not in st.session_state:
     st.session_state.param_unit = "bar"
 if "trend_dir" not in st.session_state:
     st.session_state.trend_dir = "Progressive Upwards (High is Bad)"
-if "_val" not in st.session_state:
-    st.session_state._val = 0.500 if data_source == "Sample Data" else 0.400
+if "alert_val" not in st.session_state:
+    st.session_state.alert_val = 2.800 if data_source == "Sample Data" else 0.400
 if "danger_val" not in st.session_state:
-    st.session_state.danger_val = 0.800 if data_source == "Sample Data" else 0.500
+    st.session_state.danger_val = 4.500 if data_source == "Sample Data" else 0.500
 
 st.sidebar.header("2. Asset Information")
 complex_name = st.sidebar.text_input("Complex Name", value="ABC Complex")
@@ -90,17 +90,17 @@ elif data_source == "Copy & Paste Bulk Data":
         st.stop()
 
 else:  # Sample Data Mode
-    st.sidebar.success("✅ Running with Synthetic Asset Degradation Data (0.00 - 0.45 bar)")
+    st.sidebar.success("✅ Running with Synthetic Asset Degradation Data (1.00 - 3.00 mm/s)")
     np.random.seed(42)
     
-    # 20 points over 300 days progressing smoothly from ~0.10 bar up to ~0.43 bar
+    # 20 data points over 300 days progressing smoothly from ~1.0 mm/s to ~3.0 mm/s
     dates = pd.date_range(end=datetime.now(), periods=20, freq='15D')
     days_passed = np.arange(20) * 15
     
-    # Synthetic exponential curve scaled perfectly between 0.05 and 0.45 bar
-    base_progression = 0.10 + 0.00025 * (days_passed ** 1.35)
-    noise = np.random.normal(0, 0.008, 20)
-    synthetic_degradation = np.clip(base_progression + noise, 0.020, 0.445)
+    # Quadratic / Exponential curve matching ~1.0 mm/s initial up to ~3.0 mm/s final
+    base_progression = 1.00 + 0.000022 * (days_passed ** 2.05)
+    noise = np.random.normal(0, 0.05, 20)
+    synthetic_degradation = np.clip(base_progression + noise, 0.90, 4.40)
     
     df = pd.DataFrame({
         "timestamp": dates,
@@ -118,8 +118,8 @@ trend_direction = st.sidebar.selectbox(
 )
 is_increasing = (trend_direction == "Progressive Upwards (High is Bad)")
 
-ALERT_THRESHOLD = st.sidebar.number_input(f"Alert Threshold [{param_unit}]", key="alert_val", step=0.001, format="%.3g")
-DANGER_THRESHOLD = st.sidebar.number_input(f"Danger Threshold [{param_unit}]", key="danger_val", step=0.001, format="%.3g")
+ALERT_THRESHOLD = st.sidebar.number_input(f"Alert Threshold [{param_unit}]", key="alert_val", step=0.001, format="%.3f")
+DANGER_THRESHOLD = st.sidebar.number_input(f"Danger Threshold [{param_unit}]", key="danger_val", step=0.001, format="%.3f")
 CONFIDENCE_PCT = st.sidebar.number_input("Confidence Level Analysis [%]", value=95.0, min_value=50.0, max_value=99.9, step=1.0)
 
 # Setup Output Directory
@@ -149,7 +149,7 @@ degradation_val = df["value"].values
 latest_val = df["value"].iloc[-1]
 
 # ==========================================
-# 3. REGRESSION MODELING SUITE (FIXED FOR NEGATIVE DATA)
+# 3. REGRESSION MODELING SUITE
 # ==========================================
 def _lin(x, a, b): return a * x + b
 def _quad(x, a, b, c): return a * x**2 + b * x + c
@@ -169,7 +169,6 @@ mean_d = max(np.mean(days), 1.0)
 mean_v = np.mean(degradation_val)
 is_negative = mean_v < 0
 
-# Adjust dynamic bounds depending on trend direction and data sign (Positive vs Negative)
 if is_increasing:
     lin_bounds = ([0, -np.inf], [np.inf, np.inf])
     quad_bounds = ([0, 0, -np.inf], [np.inf, np.inf, np.inf])
@@ -183,7 +182,6 @@ else:
     log_bounds = ([-np.inf, -np.inf], [0, np.inf])
     power_bounds = ([-np.inf, -np.inf], [0, np.inf]) if not is_negative else ([-np.inf, -np.inf], [0, 0])
 
-# Dynamic initial guess generation for Exponential model using absolute log transforms
 try:
     y_pos = np.maximum(np.abs(degradation_val), 1e-6)
     poly = np.polyfit(days, np.log(y_pos), 1)
@@ -193,6 +191,7 @@ try:
         a_init = -a_init
     expo_p0 = [a_init, b_init]
 except Exception:
+    a_init = mean_v
     expo_p0 = [mean_v, 0.0001 if is_increasing else -0.0001]
 
 max_v_abs = max(np.max(np.abs(degradation_val)) * 2.5, 100.0)
@@ -202,7 +201,7 @@ MODELS = {
     "Quadratic": (_quad, [0.0001 if is_increasing else -0.0001, 0.001 if is_increasing else -0.001, mean_v], quad_bounds),
     "Exponential": (_expo, expo_p0, expo_bounds),
     "Logarithmic": (_logf, [0.01 if is_increasing else -0.01, mean_v], log_bounds),
-    "Power Law": (_power, [a_init if 'a_init' in locals() else mean_v, 1.0], power_bounds),
+    "Power Law": (_power, [a_init, 1.0], power_bounds),
     "Log-Normal CDF": (lambda x, a, s, sc: _lognorm(x, a, s, sc, shift=mean_v if is_negative else 0), 
                        [max_v_abs, 1.0, mean_d], ([0, 0.01, 0.1], [max_v_abs * 5, 10.0, 50000])),
     "Weibull CDF": (lambda x, a, b, e: _weibull(x, a, b, e, shift=mean_v if is_negative else 0), 
@@ -238,11 +237,7 @@ auto_best = max(model_results, key=lambda k: model_results[k]["r2"])
 model_options = ["Auto (Select Best R²)"] + list(model_results.keys())
 selected_model_option = st.sidebar.selectbox("Regression Model Choice:", model_options)
 
-if selected_model_option == "Auto (Select Best R²)":
-    best_name = auto_best
-else:
-    best_name = selected_model_option
-
+best_name = auto_best if selected_model_option == "Auto (Select Best R²)" else selected_model_option
 best = model_results[best_name]
 
 # ==========================================
@@ -258,7 +253,7 @@ with st.expander("💡 Technical Guidance: Metrics, RUL & Model Selection Guide"
     * **Degradation Direction Mode:** 
       * **Progressive Upwards:** Values increase toward threshold limits (e.g., Rider Ring Wear / Rod Drop, Vibration, Temperature, Differential Pressure).
       * **Progressive Downwards:** Values decrease toward threshold limits (e.g., Pipe Wall Thickness, Piston Ring Thickness, Flow Rate).
-    * **$R^2$ Score (Coefficient of Determination):** Measures goodness-of-fit ($100\%$ indicates a perfect mathematical fit).
+    * **$R^2$ Score (Coefficient of Determination):** Measures goodness-of-fit ($100\\%$ indicates a perfect mathematical fit).
 
     ---
 
@@ -291,7 +286,7 @@ st.dataframe(pd.DataFrame(model_comparison_data), use_container_width=True)
 # 5. METRICS & PROGNOSTIC BREACH SUMMARY
 # ==========================================
 m1, m2, m3 = st.columns(3)
-m1.metric("Selected Model", f"{best_name}", f"R² = {best['r2'] *100:.2f}%")
+m1.metric("Selected Model", f"{best_name}", f"R² = {best['r2'] * 100:.2f}%")
 m2.metric("Current Data Value", f"{latest_val:.3f} {param_unit}".strip())
 m3.metric("Direction Mode", "Upwards ⬆️" if is_increasing else "Downwards ⬇️")
 
@@ -340,7 +335,7 @@ for label, threshold_val, (e, c, l) in targets_info:
 
     prognosis_data.append({
         "Threshold Level": label,
-        "Threshold Value": f"{threshold_val:.3g} {param_unit}".strip(),
+        "Threshold Value": f"{threshold_val:.3f} {param_unit}".strip(),
         "Earliest Date": e_date,
         "Expected Date": c_date,
         "Latest Date": l_date,
@@ -508,11 +503,11 @@ def generate_pdf_report(filename):
         [Paragraph("Analysis Title / Parameter", body_style_l), Paragraph(analysis_title, body_style)],
         [Paragraph("Degradation Mode", body_style_l), Paragraph(trend_direction, body_style)],
         [Paragraph("Measurement Unit", body_style_l), Paragraph(param_unit if param_unit else "N/A", body_style)],
-        [Paragraph("Alert Threshold", body_style_l), Paragraph(f"{ALERT_THRESHOLD:.3g} {param_unit}".strip(), body_style)],
-        [Paragraph("Danger Threshold", body_style_l), Paragraph(f"{DANGER_THRESHOLD:.3g} {param_unit}".strip(), body_style)],
+        [Paragraph("Alert Threshold", body_style_l), Paragraph(f"{ALERT_THRESHOLD:.3f} {param_unit}".strip(), body_style)],
+        [Paragraph("Danger Threshold", body_style_l), Paragraph(f"{DANGER_THRESHOLD:.3f} {param_unit}".strip(), body_style)],
         [Paragraph("Confidence Level", body_style_l), Paragraph(f"{CONFIDENCE_PCT:.1f} %", body_style)]
     ]
-    t_spec = Table(spec_data, colWidths=[300, 200])
+    t_spec = Table(spec_data, colWidths=[300, 240])
     t_spec.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), PRIMARY_COLOR),
         ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
@@ -535,7 +530,7 @@ def generate_pdf_report(filename):
             Paragraph(row["Status"], body_style)
         ])
 
-    t_comp = Table(comp_table_data, colWidths=[130, 100, 120, 150])
+    t_comp = Table(comp_table_data, colWidths=[150, 100, 140, 150])
     t_comp.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), PRIMARY_COLOR),
         ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
@@ -560,7 +555,7 @@ def generate_pdf_report(filename):
             Paragraph(row["Latest Date"], body_style), Paragraph(row["RUL (Days)"], body_style)
         ])
 
-    t_prog = Table(prog_table_data, colWidths=[90, 85, 80, 80, 85, 80])
+    t_prog = Table(prog_table_data, colWidths=[95, 90, 85, 85, 95, 90])
     t_prog.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), PRIMARY_COLOR),
         ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
