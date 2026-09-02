@@ -45,7 +45,7 @@ if "prev_data_source" not in st.session_state:
 if data_source != st.session_state.prev_data_source:
     st.session_state.prev_data_source = data_source
     if data_source == "Sample Data":
-        st.session_state.param_unit = "bar"
+        st.session_state.param_unit = "mm/s"
         st.session_state.trend_dir = "Progressive Upwards (High is Bad)"
         st.session_state._val = 0.500
         st.session_state.danger_val = 0.800
