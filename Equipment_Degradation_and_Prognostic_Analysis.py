@@ -291,7 +291,7 @@ st.dataframe(pd.DataFrame(model_comparison_data), use_container_width=True)
 # 5. METRICS & PROGNOSTIC BREACH SUMMARY
 # ==========================================
 m1, m2, m3 = st.columns(3)
-m1.metric("Selected Model", f"{best_name}", f"R² = {best['r2'] *100.2f}%")
+m1.metric("Selected Model", f"{best_name}", f"R² = {best['r2'] *100:.2f}%")
 m2.metric("Current Data Value", f"{latest_val:.3f} {param_unit}".strip())
 m3.metric("Direction Mode", "Upwards ⬆️" if is_increasing else "Downwards ⬇️")
 
