@@ -90,7 +90,7 @@ elif data_source == "Copy & Paste Bulk Data":
         st.stop()
 
 else:  # Sample Data Mode
-    st.sidebar.success("✅ Running with Synthetic Asset Degradation Data (1.00 - 3.00 mm/s)")
+    st.sidebar.success("✅ Running with Synthetic Vibration Degradation Data")
     np.random.seed(42)
     
     # 20 data points over 300 days progressing smoothly from ~1.0 mm/s to ~3.0 mm/s
