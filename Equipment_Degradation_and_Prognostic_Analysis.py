@@ -474,6 +474,19 @@ st.plotly_chart(fig_interactive, use_container_width=True)
 # ==========================================
 pdf_file_path = os.path.join(OUTPUT_DIR, f"{complex_name}_{equipment_name}_Prognostic_Report.pdf")
 
+def create_section_header(title_text, style, bg_color, table_width=540):
+    p = Paragraph(title_text, style)
+    t = Table([[p]], colWidths=[table_width])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), bg_color),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    return t
+
 def generate_pdf_report(filename):
     doc = SimpleDocTemplate(filename, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
     styles = getSampleStyleSheet()
@@ -484,18 +497,39 @@ def generate_pdf_report(filename):
     ALT_ROW_COLOR = colors.HexColor('#F8FAFC')
     BORDER_COLOR = colors.HexColor('#CBD5E1')
 
-    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=13, textColor=PRIMARY_COLOR, alignment=1, spaceAfter=12)
-    section_style = ParagraphStyle('SectionStyle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=10, textColor=colors.HexColor('#FFFFFF'), backColor=SECONDARY_COLOR, spaceBefore=10, spaceAfter=6, leftIndent=6)
+    title_style = ParagraphStyle(
+        'TitleStyle', 
+        parent=styles['Heading1'], 
+        fontName='Helvetica-Bold', 
+        fontSize=13, 
+        textColor=PRIMARY_COLOR, 
+        alignment=1, 
+        spaceAfter=12
+    )
+    
+    section_style = ParagraphStyle(
+        'SectionStyle', 
+        parent=styles['Heading2'], 
+        fontName='Helvetica-Bold', 
+        fontSize=10, 
+        textColor=colors.HexColor('#FFFFFF'), 
+        spaceBefore=0, 
+        spaceAfter=0, 
+        leftIndent=0
+    )
 
     hdr_style = ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=colors.whitesmoke, alignment=1)
     hdr_style_l = ParagraphStyle('THL', fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=colors.whitesmoke, alignment=0)
     body_style = ParagraphStyle('TD', fontName='Helvetica', fontSize=8, leading=10, alignment=1)
     body_style_l = ParagraphStyle('TDL', fontName='Helvetica', fontSize=8, leading=10, alignment=0)
 
+    # Document Title
     story.append(Paragraph(f"DEGRADATION AND PROGNOSTIC ANALYSIS REPORT<br/>{complex_name.upper()} - {equipment_name.upper()}", title_style))
     story.append(Spacer(1, 6))
 
-    story.append(Paragraph("TECHNICAL SPECIFICATIONS & THRESHOLDS", section_style))
+    # Section 1
+    story.append(create_section_header("TECHNICAL SPECIFICATIONS & THRESHOLDS", section_style, SECONDARY_COLOR))
+    story.append(Spacer(1, 6))
     spec_data = [
         [Paragraph("Parameter", hdr_style_l), Paragraph("Value", hdr_style)],
         [Paragraph("Complex Name", body_style_l), Paragraph(complex_name, body_style)],
@@ -519,7 +553,9 @@ def generate_pdf_report(filename):
     story.append(t_spec)
     story.append(Spacer(1, 8))
 
-    story.append(Paragraph("MODEL COMPARISON & FIT METRICS", section_style))
+    # Section 2
+    story.append(create_section_header("MODEL COMPARISON & FIT METRICS", section_style, SECONDARY_COLOR))
+    story.append(Spacer(1, 6))
     comp_headers = [Paragraph("Model Name", hdr_style_l), Paragraph("R² Score", hdr_style), Paragraph("Residual Std", hdr_style), Paragraph("Status", hdr_style)]
     comp_table_data = [comp_headers]
     for row in model_comparison_data:
@@ -542,7 +578,9 @@ def generate_pdf_report(filename):
     story.append(t_comp)
     story.append(Spacer(1, 8))
 
-    story.append(Paragraph("PROGNOSTIC BREACH PROJECTION SUMMARY", section_style))
+    # Section 3
+    story.append(create_section_header("PROGNOSTIC BREACH PROJECTION SUMMARY", section_style, SECONDARY_COLOR))
+    story.append(Spacer(1, 6))
     prog_headers = [
         Paragraph("Threshold Level", hdr_style_l), Paragraph("Threshold Value", hdr_style),
         Paragraph("Earliest Date", hdr_style), Paragraph("Expected Date", hdr_style), Paragraph("Latest Date", hdr_style), Paragraph("RUL (Days)", hdr_style)
@@ -568,7 +606,8 @@ def generate_pdf_report(filename):
 
     story.append(PageBreak())
 
-    story.append(Paragraph("PROGNOSTIC TREND VISUALISATION", section_style))
+    # Section 4
+    story.append(create_section_header("PROGNOSTIC TREND VISUALISATION", section_style, SECONDARY_COLOR))
     story.append(Spacer(1, 10))
     story.append(RLImage(plot_img_path, width=500, height=250))
 
