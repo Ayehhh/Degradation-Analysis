@@ -29,8 +29,10 @@ st.title("📈 Equipment Degradation & Prognostic Analysis Tool")
 st.markdown("This application models physical asset degradation trends and uses curve-fitting models to project Remaining Useful Life (RUL) and forecasted dates for **Alert** and **Danger** threshold breaches.")
 
 # ==========================================
-# 1. USER INPUTS & PARAMETERS (SIDEBAR)
+# SIDEBAR CONTROLS (ALWAYS RENDERED FIRST)
 # ==========================================
+
+# 1. DATA SOURCE SELECTION
 st.sidebar.header("1. Data Source")
 data_source = st.sidebar.selectbox(
     "Choose Analysis Mode:",
@@ -60,54 +62,24 @@ if "alert_val" not in st.session_state:
 if "danger_val" not in st.session_state:
     st.session_state.danger_val = 4.500 if data_source == "Sample Data" else 0.500
 
+# Data Upload / Paste Controls (UI only)
+uploaded_file = None
+paste_data = ""
+
+if data_source == "Upload Excel File":
+    uploaded_file = st.sidebar.file_uploader("Upload Excel Dataset (.xlsx / .xls)", type=["xlsx", "xls"])
+elif data_source == "Copy & Paste Bulk Data":
+    st.sidebar.markdown("**Paste Data Below** (Format: Two columns: `Timestamp`, `Value`)")
+    paste_data = st.sidebar.text_area("Paste tab or comma-separated data:", height=150, 
+                                       placeholder="12/05/2026\t0.312\n12/05/2026\t0.311\n13/05/2026\t0.316")
+
+# 2. ASSET INFORMATION
 st.sidebar.header("2. Asset Information")
 complex_name = st.sidebar.text_input("Complex Name", value="ABC Complex")
 equipment_name = st.sidebar.text_input("Equipment Name", value="P1234")
 analysis_title = st.sidebar.text_input("Analysis Title / Parameter", value="Vibration Trending")
 
-df = None
-
-if data_source == "Upload Excel File":
-    uploaded_file = st.sidebar.file_uploader("Upload Excel Dataset (.xlsx / .xls)", type=["xlsx", "xls"])
-    if uploaded_file is not None:
-        df = pd.read_excel(uploaded_file)
-    else:
-        st.info("👈 Please upload an Excel file in the sidebar to proceed.")
-        st.stop()
-
-elif data_source == "Copy & Paste Bulk Data":
-    st.sidebar.markdown("**Paste Data Below** (Format: Two columns: `Timestamp`, `Value`)")
-    paste_data = st.sidebar.text_area("Paste tab or comma-separated data:", height=150, 
-                                     placeholder="12/05/2026\t0.312\n12/05/2026\t0.311\n13/05/2026\t0.316")
-    if paste_data.strip():
-        try:
-            df = pd.read_csv(io.StringIO(paste_data), sep=None, engine='python', header=None)
-        except Exception as e:
-            st.error(f"Error parsing pasted data: {e}")
-            st.stop()
-    else:
-        st.info("👈 Please paste tabular data in the text area to proceed.")
-        st.stop()
-
-else:  # Sample Data Mode
-    st.sidebar.success("✅ Running with Synthetic Vibration Degradation Data")
-    np.random.seed(42)
-    
-    # 20 data points over 300 days progressing smoothly from ~1.0 mm/s to ~3.0 mm/s
-    dates = pd.date_range(end=datetime.now(), periods=20, freq='15D')
-    days_passed = np.arange(20) * 15
-    
-    # Quadratic / Exponential curve matching ~1.0 mm/s initial up to ~3.0 mm/s final
-    base_progression = 1.00 + 0.000022 * (days_passed ** 2.05)
-    noise = np.random.normal(0, 0.05, 20)
-    synthetic_degradation = np.clip(base_progression + noise, 0.90, 4.40)
-    
-    df = pd.DataFrame({
-        "timestamp": dates,
-        "value": synthetic_degradation
-    })
-
-# Engineering Parameters Inputs
+# 3. ENGINEERING PARAMETERS (ALWAYS SHOWN)
 st.sidebar.header("3. Engineering Parameters")
 param_unit = st.sidebar.text_input("Measurement Unit", key="param_unit")
 
@@ -122,14 +94,70 @@ ALERT_THRESHOLD = st.sidebar.number_input(f"Alert Threshold [{param_unit}]", key
 DANGER_THRESHOLD = st.sidebar.number_input(f"Danger Threshold [{param_unit}]", key="danger_val", step=0.001, format="%.3f")
 CONFIDENCE_PCT = st.sidebar.number_input("Confidence Level Analysis [%]", value=95.0, min_value=50.0, max_value=99.9, step=1.0)
 
+# 4. MODEL SELECTION (ALWAYS SHOWN)
+st.sidebar.header("4. Model Selection")
+model_options = [
+    "Auto (Select Best R²)",
+    "Linear",
+    "Quadratic",
+    "Exponential",
+    "Logarithmic",
+    "Power Law",
+    "Log-Normal CDF",
+    "Weibull CDF",
+    "Log-Logistic CDF"
+]
+selected_model_option = st.sidebar.selectbox("Regression Model Choice:", model_options)
+
+
+# ==========================================
+# DATA LOADING & EVALUATION
+# ==========================================
+df = None
+
+if data_source == "Upload Excel File":
+    if uploaded_file is not None:
+        df = pd.read_excel(uploaded_file)
+    else:
+        st.info("👈 Please upload an Excel file in the sidebar to proceed.")
+        st.stop()
+
+elif data_source == "Copy & Paste Bulk Data":
+    if paste_data.strip():
+        try:
+            df = pd.read_csv(io.StringIO(paste_data), sep=None, engine='python', header=None)
+        except Exception as e:
+            st.error(f"Error parsing pasted data: {e}")
+            st.stop()
+    else:
+        st.info("👈 Please paste tabular data in the text area to proceed.")
+        st.stop()
+
+else:  # Sample Data Mode
+    st.sidebar.success("✅ Running with Synthetic Vibration Degradation Data")
+    np.random.seed(42)
+    
+    dates = pd.date_range(end=datetime.now(), periods=20, freq='15D')
+    days_passed = np.arange(20) * 15
+    
+    base_progression = 1.00 + 0.000022 * (days_passed ** 2.05)
+    noise = np.random.normal(0, 0.05, 20)
+    synthetic_degradation = np.clip(base_progression + noise, 0.90, 4.40)
+    
+    df = pd.DataFrame({
+        "timestamp": dates,
+        "value": synthetic_degradation
+    })
+
 # Setup Output Directory
 OUTPUT_DIR = "Prognosis_Output_Files"
 if os.path.exists(OUTPUT_DIR):
     shutil.rmtree(OUTPUT_DIR)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+
 # ==========================================
-# 2. DATA PREPROCESSING
+# DATA PREPROCESSING
 # ==========================================
 if len(df.columns) >= 2:
     df = df.iloc[:, :2]
@@ -148,8 +176,9 @@ days = (df["timestamp"] - t0).dt.total_seconds().values / 86400.0
 degradation_val = df["value"].values
 latest_val = df["value"].iloc[-1]
 
+
 # ==========================================
-# 3. REGRESSION MODELING SUITE
+# REGRESSION MODELING SUITE
 # ==========================================
 def _lin(x, a, b): return a * x + b
 def _quad(x, a, b, c): return a * x**2 + b * x + c
@@ -157,7 +186,6 @@ def _power(x, a, b): return a * np.power(np.maximum(x, 1e-6), b)
 def _expo(x, a, b): return a * np.exp(np.clip(b * x, -50, 50))
 def _logf(x, a, b): return a * np.log(x + 1.0) + b
 
-# Handling negative values gracefully for CDF functions
 def _lognorm(x, a, shape, scale, shift=0): 
     return a * stats.lognorm.cdf(np.maximum(x, 1e-6), s=shape, scale=scale) + shift
 def _weibull(x, a, beta, eta, shift=0): 
@@ -231,17 +259,22 @@ if not model_results:
     st.error("❌ Unable to fit regression models with the selected degradation direction. Check threshold orientation.")
     st.stop()
 
-# --- MODEL SELECTION BY USER ---
-st.sidebar.header("4. Model Selection")
+# Determine Best Model
 auto_best = max(model_results, key=lambda k: model_results[k]["r2"])
-model_options = ["Auto (Select Best R²)"] + list(model_results.keys())
-selected_model_option = st.sidebar.selectbox("Regression Model Choice:", model_options)
 
-best_name = auto_best if selected_model_option == "Auto (Select Best R²)" else selected_model_option
+if selected_model_option == "Auto (Select Best R²)":
+    best_name = auto_best
+elif selected_model_option in model_results:
+    best_name = selected_model_option
+else:
+    st.warning(f"⚠️ Selected model '{selected_model_option}' failed to converge. Falling back to best fit ({auto_best}).")
+    best_name = auto_best
+
 best = model_results[best_name]
 
+
 # ==========================================
-# 4. EXPLANATION & FIT METRICS DISPLAY
+# EXPLANATION & FIT METRICS DISPLAY
 # ==========================================
 st.subheader("📊 Model Comparison & Fit Metrics")
 
@@ -282,8 +315,9 @@ for name, res in model_results.items():
     })
 st.dataframe(pd.DataFrame(model_comparison_data), use_container_width=True)
 
+
 # ==========================================
-# 5. METRICS & PROGNOSTIC BREACH SUMMARY
+# METRICS & PROGNOSTIC BREACH SUMMARY
 # ==========================================
 m1, m2, m3 = st.columns(3)
 m1.metric("Selected Model", f"{best_name}", f"R² = {best['r2'] * 100:.2f}%")
@@ -344,8 +378,9 @@ for label, threshold_val, (e, c, l) in targets_info:
 
 st.table(pd.DataFrame(prognosis_data))
 
+
 # ==========================================
-# 6. VISUALIZATION
+# VISUALIZATION
 # ==========================================
 candidate_days = [d for d in [f_Alert[1], f_Danger[1]] if d is not None]
 x_max_plot = max(candidate_days) * 1.15 if candidate_days else max(days[-1] * 3, 30)
@@ -469,8 +504,9 @@ fig_interactive.update_layout(
 
 st.plotly_chart(fig_interactive, use_container_width=True)
 
+
 # ==========================================
-# 7. REPORT GENERATION & DOWNLOAD
+# REPORT GENERATION & DOWNLOAD
 # ==========================================
 pdf_file_path = os.path.join(OUTPUT_DIR, f"{complex_name}_{equipment_name}_Prognostic_Report.pdf")
 
