@@ -47,14 +47,14 @@ if "prev_data_source" not in st.session_state:
 if data_source != st.session_state.prev_data_source:
     st.session_state.prev_data_source = data_source
     if data_source == "Sample Data":
-        st.session_state.param_unit = "bar"
+        st.session_state.param_unit = "mm/s"
         st.session_state.trend_dir = "Progressive Upwards (High is Bad)"
         st.session_state.alert_val = 2.8
         st.session_state.danger_val = 4.5
 
 # Set initial default session states if not present
 if "param_unit" not in st.session_state:
-    st.session_state.param_unit = "bar"
+    st.session_state.param_unit = "mm/s"
 if "trend_dir" not in st.session_state:
     st.session_state.trend_dir = "Progressive Upwards (High is Bad)"
 if "alert_val" not in st.session_state:
