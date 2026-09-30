@@ -58,9 +58,9 @@ if "param_unit" not in st.session_state:
 if "trend_dir" not in st.session_state:
     st.session_state.trend_dir = "Progressive Upwards (High is Bad)"
 if "alert_val" not in st.session_state:
-    st.session_state.alert_val = 2.8 if data_source == "Sample Data" else 0.400
+    st.session_state.alert_val = 2.8 if data_source == "Sample Data" else 2.8
 if "danger_val" not in st.session_state:
-    st.session_state.danger_val = 4.5 if data_source == "Sample Data" else 0.500
+    st.session_state.danger_val = 4.5 if data_source == "Sample Data" else 4.5
 
 # Data Upload / Paste Controls (UI only)
 uploaded_file = None
