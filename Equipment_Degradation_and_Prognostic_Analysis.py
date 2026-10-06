@@ -27,7 +27,9 @@ st.set_page_config(
 
 st.title("📈 Equipment Degradation & Prognostic Analysis Tool")
 st.markdown("This application models physical asset degradation trends and uses curve-fitting models to project Remaining Useful Life (RUL) and forecasted dates for **Alert** and **Danger** threshold breaches.")
-
+st.caption(
+    "Developed by Harith Irfan. Contact me for further information"
+    " @ mharithirfan14@gmail.com")
 # ==========================================
 # SIDEBAR CONTROLS (ALWAYS RENDERED FIRST)
 # ==========================================
