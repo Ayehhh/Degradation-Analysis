@@ -78,7 +78,7 @@ elif data_source == "Copy & Paste Bulk Data":
 # 2. ASSET INFORMATION
 st.sidebar.header("2. Asset Information")
 complex_name = st.sidebar.text_input("Complex Name", value="ABC Complex")
-equipment_name = st.sidebar.text_input("Equipment Name", value="P1234")
+equipment_name = st.sidebar.text_input("Equipment Name (point location, if necessary)", value="P1234 (Horizontal)")
 analysis_title = st.sidebar.text_input("Analysis Title / Parameter", value="Vibration Trending")
 
 # 3. ENGINEERING PARAMETERS (ALWAYS SHOWN)
