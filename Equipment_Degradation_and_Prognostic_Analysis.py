@@ -380,6 +380,12 @@ for label, threshold_val, (e, c, l) in targets_info:
 
 st.table(pd.DataFrame(prognosis_data))
 
+st.caption(
+    "⚠️ **Disclaimer:** Remaining Useful Life (RUL) projections and threshold breach dates are model-based estimations "
+    "derived from historical data trends. Actual asset degradation rates are influenced by dynamic operating conditions, "
+    "and other factors. These projections serve as a decision-support guideline "
+    "for proactive maintenance planning alongside routine physical inspections and condition monitoring."
+)
 
 # ==========================================
 # VISUALIZATION
